@@ -1,31 +1,50 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import Navbar from "@/components/layout/Navbar";
-import Footer from "@/components/layout/Footer";
-import { CheckCircle, Zap, Users, BarChart } from "lucide-react";
-import { useAuth } from "@/hooks/use-auth";
+import { CheckCircle, Zap, Users, BarChart, Monitor } from "lucide-react";
 
+// Simple Navbar component
+function SimpleNavbar({ transparent = false }) {
+  return (
+    <nav className={`w-full ${transparent ? 'bg-transparent' : 'bg-white shadow-sm'}`}>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex justify-between h-16">
+          <div className="flex items-center">
+            <Monitor className="h-8 w-auto text-primary" />
+            <span className="ml-2 text-xl font-bold text-primary">HireLens</span>
+          </div>
+          <div className="flex items-center space-x-4">
+            <Link href="/auth">
+              <Button>Sign up / Login</Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+// Simple Footer component
+function SimpleFooter() {
+  return (
+    <footer className="bg-gray-800 text-white py-10">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="text-center">
+          <h3 className="text-lg font-semibold mb-4">HireLens</h3>
+          <p className="text-sm text-gray-400">© 2025 HireLens. All rights reserved.</p>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+// Simplified version without auth dependency for debugging
 export default function LandingPage() {
-  const { user } = useAuth();
-
-  const getDashboardLink = () => {
-    if (!user) return "/auth";
-    
-    switch (user.role) {
-      case "jobseeker":
-        return "/dashboard/jobseeker";
-      case "recruiter":
-        return "/dashboard/recruiter";
-      case "admin":
-        return "/dashboard/admin";
-      default:
-        return "/dashboard/jobseeker";
-    }
-  };
+  // Simplified dashboard link - always goes to auth page
+  const getDashboardLink = () => "/auth";
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar transparent />
+      <SimpleNavbar transparent />
       
       {/* Hero Section */}
       <div className="relative bg-white overflow-hidden">
@@ -318,7 +337,7 @@ export default function LandingPage() {
         </div>
       </div>
 
-      <Footer />
+      <SimpleFooter />
     </div>
   );
 }

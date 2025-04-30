@@ -7,6 +7,7 @@ import AuthPage from "@/pages/auth-page";
 import JobseekerDashboard from "@/pages/jobseeker-dashboard";
 import RecruiterDashboard from "@/pages/recruiter-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
+import About from "@/pages/about";
 import { ProtectedRoute } from "./lib/protected-route";
 import { ThemeProvider } from "next-themes";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -23,6 +24,7 @@ function App() {
             <Switch>
               <Route path="/" component={LandingPage} />
               <Route path="/auth" component={AuthPage} />
+              <Route path="/about" component={About} />
               <ProtectedRoute path="/dashboard/jobseeker" role="jobseeker" component={JobseekerDashboard} />
               <ProtectedRoute path="/dashboard/recruiter" role="recruiter" component={RecruiterDashboard} />
               <ProtectedRoute path="/dashboard/admin" role="admin" component={AdminDashboard} />

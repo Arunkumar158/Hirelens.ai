@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, Zap, Users, BarChart, Monitor } from "lucide-react";
+import { CheckCircle, Zap, Users, BarChart, Monitor, Cloud, Activity, Target } from "lucide-react";
 
 // Simple Navbar component
 function SimpleNavbar({ transparent = false }) {
@@ -43,168 +43,156 @@ export default function LandingPage() {
   const getDashboardLink = () => "/auth";
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="min-h-screen flex flex-col font-sans">
       <SimpleNavbar transparent />
       
       {/* Hero Section */}
-      <div className="relative bg-white overflow-hidden">
-        <div className="max-w-7xl mx-auto">
-          <div className="relative z-10 pb-8 bg-white sm:pb-16 md:pb-20 lg:max-w-2xl lg:w-full lg:pb-28 xl:pb-32">
-            <svg
-              className="hidden lg:block absolute right-0 inset-y-0 h-full w-48 text-white transform translate-x-1/2"
-              fill="currentColor"
-              viewBox="0 0 100 100"
-              preserveAspectRatio="none"
-              aria-hidden="true"
-            >
-              <polygon points="50,0 100,0 50,100 0,100" />
-            </svg>
-            <div className="pt-10 sm:pt-16 lg:pt-8 xl:pt-16">
-              <div className="sm:text-center lg:text-left">
-                <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
-                  <span className="block">AI-powered</span>
-                  <span className="block text-primary">Resume Screening</span>
-                </h1>
-                <p className="mt-3 text-base text-gray-500 sm:mt-5 sm:text-lg sm:max-w-xl sm:mx-auto md:mt-5 md:text-xl lg:mx-0">
-                  Get instant feedback on your resume's match with job descriptions. Improve your chances of landing interviews with AI-powered suggestions.
-                </p>
-                <div className="mt-5 sm:mt-8 sm:flex sm:justify-center lg:justify-start">
-                  <div className="rounded-md shadow">
-                    <Link href={getDashboardLink()}>
-                      <Button size="lg" className="w-full">
-                        Upload Resume to Get Started
-                      </Button>
-                    </Link>
-                  </div>
-                  <div className="mt-3 sm:mt-0 sm:ml-3">
-                    <Link href="/auth">
-                      <Button variant="outline" size="lg" className="w-full">
-                        For Recruiters
-                      </Button>
-                    </Link>
-                  </div>
+      <div className="relative bg-white overflow-hidden py-24">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="grid grid-cols-1 md:grid-cols-10 gap-12 items-center">
+            {/* 60% Text Column */}
+            <div className="md:col-span-6">
+              <h1 className="text-4xl tracking-tight font-extrabold text-gray-900 sm:text-5xl md:text-6xl">
+                <span className="block">AI-powered</span>
+                <span className="block text-blue-500">Resume Screening</span>
+              </h1>
+              <p className="mt-6 text-lg leading-relaxed text-slate-600 sm:max-w-xl">
+                Get instant feedback on your resume's match with job descriptions. Improve your chances of landing interviews with AI-powered suggestions.
+              </p>
+              <div className="mt-8 sm:flex gap-4">
+                <div className="rounded-md shadow">
+                  <Link href={getDashboardLink()}>
+                    <Button size="lg" className="w-full bg-blue-500 hover:bg-blue-600">
+                      Upload Resume to Get Started
+                    </Button>
+                  </Link>
                 </div>
+                <div className="mt-3 sm:mt-0">
+                  <Link href="/auth">
+                    <Button variant="outline" size="lg" className="w-full border-blue-500 text-blue-500 hover:bg-blue-50">
+                      For Recruiters
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+
+            {/* 40% Image Column */}
+            <div className="md:col-span-4 relative">
+              <img
+                className="w-full h-auto object-cover rounded-[24px] shadow-[0_10px_25px_-5px_rgba(0,0,0,0.1)]"
+                src="https://images.unsplash.com/photo-1573497620053-ea5300f94f21?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
+                alt="Modern recruitment office"
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* The 'Three-Step' Journey */}
+      <div className="bg-gray-50 py-24" id="how-it-works">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-16">
+            <h2 className="text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+              Your Journey to the Right Job
+            </h2>
+          </div>
+
+          <div className="relative">
+            {/* Dashed connector line for desktop */}
+            <div className="hidden md:block absolute top-12 left-[16.66%] right-[16.66%] border-t-2 border-dashed border-gray-300 z-0"></div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 relative z-10">
+              {/* Step 1 */}
+              <div className="text-center flex flex-col items-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex items-center justify-center h-24 w-24 rounded-full bg-blue-50 text-blue-500 mb-6 mx-auto">
+                  <Cloud className="h-10 w-10" />
+                </div>
+                <h3 className="text-xl font-bold tracking-tight text-gray-900">1. Upload</h3>
+                <p className="mt-3 text-base leading-relaxed text-slate-600">
+                  Upload your resume in standard PDF format to our secure platform.
+                </p>
+              </div>
+
+              {/* Step 2 */}
+              <div className="text-center flex flex-col items-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex items-center justify-center h-24 w-24 rounded-full bg-blue-50 text-blue-500 mb-6 mx-auto">
+                  <Activity className="h-10 w-10" />
+                </div>
+                <h3 className="text-xl font-bold tracking-tight text-gray-900">2. Analyze</h3>
+                <p className="mt-3 text-base leading-relaxed text-slate-600">
+                  Our AI scans your skills against the target job description.
+                </p>
+              </div>
+
+              {/* Step 3 */}
+              <div className="text-center flex flex-col items-center bg-white p-8 rounded-2xl shadow-sm border border-gray-100">
+                <div className="flex items-center justify-center h-24 w-24 rounded-full bg-blue-50 text-blue-500 mb-6 mx-auto">
+                  <Target className="h-10 w-10" />
+                </div>
+                <h3 className="text-xl font-bold tracking-tight text-gray-900">3. Match</h3>
+                <p className="mt-3 text-base leading-relaxed text-slate-600">
+                  Get structural feedback, instant matches, and improvement tips.
+                </p>
               </div>
             </div>
           </div>
         </div>
-        <div className="lg:absolute lg:inset-y-0 lg:right-0 lg:w-1/2">
-          <img
-            className="h-56 w-full object-cover sm:h-72 md:h-96 lg:w-full lg:h-full"
-            src="https://images.unsplash.com/photo-1573497620053-ea5300f94f21?ixlib=rb-1.2.1&auto=format&fit=crop&w=1950&q=80"
-            alt="Modern recruitment office"
-          />
-        </div>
       </div>
 
-      {/* Features Section */}
-      <div className="py-12 bg-white" id="features">
+      {/* Bento Grid Features Section */}
+      <div className="py-24 bg-white" id="features">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="lg:text-center">
-            <h2 className="text-base text-primary font-semibold tracking-wide uppercase">Features</h2>
-            <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
+          <div className="text-center mb-16">
+            <h2 className="text-base text-blue-500 font-semibold tracking-wide uppercase">Features</h2>
+            <p className="mt-2 text-3xl font-extrabold tracking-tight text-gray-900 sm:text-4xl">
               Streamline Your Hiring Process
             </p>
-            <p className="mt-4 max-w-2xl text-xl text-gray-500 lg:mx-auto">
-              Our AI-powered platform offers solutions for both job seekers and recruiters.
-            </p>
           </div>
 
-          <div className="mt-10">
-            <dl className="space-y-10 md:space-y-0 md:grid md:grid-cols-2 md:gap-x-8 md:gap-y-10">
-              <div className="relative">
-                <dt>
-                  <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <CheckCircle className="h-6 w-6" />
-                  </div>
-                  <p className="ml-16 text-lg leading-6 font-medium text-gray-900">Resume-Job Match Analysis</p>
-                </dt>
-                <dd className="mt-2 ml-16 text-base text-gray-500">
-                  Get an instant analysis of how well your resume matches a specific job description, with a detailed breakdown of matching and missing skills.
-                </dd>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {/* Feature 1 - Large spanning col */}
+            <div className="md:col-span-2 bg-white rounded-3xl border border-gray-200 p-8 shadow-sm transition-transform duration-300 hover:-translate-y-1">
+              <div className="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-50 text-blue-500 mb-6">
+                <CheckCircle className="h-7 w-7" />
               </div>
+              <h3 className="text-2xl font-bold tracking-tight text-gray-900 mb-4">Resume-Job Match Analysis</h3>
+              <p className="text-lg leading-relaxed text-slate-600">
+                Get an instant analysis of how well your resume matches a specific job description, with a detailed breakdown of matching and missing skills.
+              </p>
+            </div>
 
-              <div className="relative">
-                <dt>
-                  <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <Zap className="h-6 w-6" />
-                  </div>
-                  <p className="ml-16 text-lg leading-6 font-medium text-gray-900">Actionable Improvement Tips</p>
-                </dt>
-                <dd className="mt-2 ml-16 text-base text-gray-500">
-                  Receive personalized suggestions to improve your resume for specific job roles, highlighting areas that need attention.
-                </dd>
+            {/* Feature 2 */}
+            <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-sm transition-transform duration-300 hover:-translate-y-1">
+              <div className="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-50 text-blue-500 mb-6">
+                <Zap className="h-7 w-7" />
               </div>
+              <h3 className="text-xl font-bold tracking-tight text-gray-900 mb-4">Actionable Improvement Tips</h3>
+              <p className="text-base leading-relaxed text-slate-600">
+                Receive personalized suggestions to improve your resume for specific job roles, highlighting areas that need attention.
+              </p>
+            </div>
 
-              <div className="relative">
-                <dt>
-                  <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <Users className="h-6 w-6" />
-                  </div>
-                  <p className="ml-16 text-lg leading-6 font-medium text-gray-900">Bulk Resume Screening for Recruiters</p>
-                </dt>
-                <dd className="mt-2 ml-16 text-base text-gray-500">
-                  Screen multiple resumes at once against a job description, automatically ranking candidates based on skills and experience match.
-                </dd>
+            {/* Feature 3 */}
+            <div className="bg-white rounded-3xl border border-gray-200 p-8 shadow-sm transition-transform duration-300 hover:-translate-y-1">
+              <div className="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-50 text-blue-500 mb-6">
+                <Users className="h-7 w-7" />
               </div>
+              <h3 className="text-xl font-bold tracking-tight text-gray-900 mb-4">Bulk Resume Screening</h3>
+              <p className="text-base leading-relaxed text-slate-600">
+                Screen multiple resumes at once against a job description, automatically ranking candidates based on skills match.
+              </p>
+            </div>
 
-              <div className="relative">
-                <dt>
-                  <div className="absolute flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white">
-                    <BarChart className="h-6 w-6" />
-                  </div>
-                  <p className="ml-16 text-lg leading-6 font-medium text-gray-900">Visual Insights & Analytics</p>
-                </dt>
-                <dd className="mt-2 ml-16 text-base text-gray-500">
-                  Get powerful visualizations of skills distribution, candidate comparisons, and detailed analytics to make informed hiring decisions.
-                </dd>
+            {/* Feature 4 - Large spanning col */}
+            <div className="md:col-span-2 bg-white rounded-3xl border border-gray-200 p-8 shadow-sm transition-transform duration-300 hover:-translate-y-1">
+              <div className="flex items-center justify-center h-14 w-14 rounded-xl bg-blue-50 text-blue-500 mb-6">
+                <BarChart className="h-7 w-7" />
               </div>
-            </dl>
-          </div>
-        </div>
-      </div>
-
-      {/* How It Works Section */}
-      <div className="bg-gray-50 py-12" id="how-it-works">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="lg:text-center">
-            <h2 className="text-base text-primary font-semibold tracking-wide uppercase">How It Works</h2>
-            <p className="mt-2 text-3xl leading-8 font-extrabold tracking-tight text-gray-900 sm:text-4xl">
-              Three Simple Steps
-            </p>
-          </div>
-
-          <div className="mt-10">
-            <div className="space-y-10 md:space-y-0 md:grid md:grid-cols-3 md:gap-x-8 md:gap-y-10">
-              <div className="text-center">
-                <div className="flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white mx-auto">
-                  <span className="text-lg font-bold">1</span>
-                </div>
-                <h3 className="mt-4 text-lg font-medium text-gray-900">Upload Your Resume</h3>
-                <p className="mt-2 text-base text-gray-500">
-                  Upload your resume in PDF format to our secure platform.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white mx-auto">
-                  <span className="text-lg font-bold">2</span>
-                </div>
-                <h3 className="mt-4 text-lg font-medium text-gray-900">Provide Job Description</h3>
-                <p className="mt-2 text-base text-gray-500">
-                  Paste the job description or enter a job link that you're interested in.
-                </p>
-              </div>
-
-              <div className="text-center">
-                <div className="flex items-center justify-center h-12 w-12 rounded-md bg-primary text-white mx-auto">
-                  <span className="text-lg font-bold">3</span>
-                </div>
-                <h3 className="mt-4 text-lg font-medium text-gray-900">Get Instant Analysis</h3>
-                <p className="mt-2 text-base text-gray-500">
-                  Receive a detailed analysis with match score, missing skills, and improvement suggestions.
-                </p>
-              </div>
+              <h3 className="text-2xl font-bold tracking-tight text-gray-900 mb-4">Visual Insights & Analytics</h3>
+              <p className="text-lg leading-relaxed text-slate-600">
+                Get powerful visualizations of skills distribution, candidate comparisons, and detailed analytics to make informed hiring decisions.
+              </p>
             </div>
           </div>
         </div>

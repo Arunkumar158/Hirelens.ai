@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
@@ -12,7 +13,7 @@ import {
   SheetContent,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { Monitor, User, LogOut, Menu } from "lucide-react";
+import { Monitor, User, LogOut, Menu, Bell, Search } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface NavbarProps {
@@ -23,6 +24,8 @@ export default function Navbar({ transparent = false }: NavbarProps) {
   const [location] = useLocation();
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
+  const isDashboardRoute = location.startsWith("/dashboard");
+  const showDashboardSearch = isDashboardRoute && user?.role !== "jobseeker";
 
   const handleLogout = async () => {
     try {
@@ -64,37 +67,55 @@ export default function Navbar({ transparent = false }: NavbarProps) {
               <Monitor className="h-8 w-auto text-primary" />
               <span className="ml-2 text-xl font-bold text-primary">HireLens</span>
             </div>
-            <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
-              <Link href="/">
-                <a className={`${location === '/' ? 'border-primary text-gray-900' : 'border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700'} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
-                  Home
-                </a>
-              </Link>
-              <Link href="/about">
-                <a className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                  About
-                </a>
-              </Link>
-              <Link href="/#how-it-works">
-                <a className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                  How it Works
-                </a>
-              </Link>
-              <Link href="/#contact">
-                <a className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
-                  Contact
-                </a>
-              </Link>
-            </div>
+            {!isDashboardRoute && (
+              <div className="hidden sm:ml-6 sm:flex sm:space-x-8">
+                <Link href="/">
+                  <a className={`${location === "/" ? "border-primary text-gray-900" : "border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700"} inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium`}>
+                    Home
+                  </a>
+                </Link>
+                <Link href="/about">
+                  <a className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                    About
+                  </a>
+                </Link>
+                <Link href="/#how-it-works">
+                  <a className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                    How it Works
+                  </a>
+                </Link>
+                <Link href="/#contact">
+                  <a className="border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium">
+                    Contact
+                  </a>
+                </Link>
+              </div>
+            )}
           </div>
           
           {/* Desktop Menu */}
           <div className="hidden sm:ml-6 sm:flex sm:items-center">
             {user ? (
               <div className="flex items-center gap-4">
-                <Link href={getDashboardLink()}>
-                  <Button variant="outline">Dashboard</Button>
-                </Link>
+                {isDashboardRoute && (
+                  <>
+                    {showDashboardSearch && (
+                      <div className="relative w-64">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        <Input placeholder="Search..." className="pl-9" />
+                      </div>
+                    )}
+                    <Button variant="ghost" size="icon" className="text-gray-600 hover:text-gray-900">
+                      <Bell className="h-5 w-5" />
+                      <span className="sr-only">Notifications</span>
+                    </Button>
+                  </>
+                )}
+                {!isDashboardRoute && (
+                  <Link href={getDashboardLink()}>
+                    <Button variant="outline">Dashboard</Button>
+                  </Link>
+                )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" className="relative h-8 w-8 rounded-full">
@@ -137,26 +158,46 @@ export default function Navbar({ transparent = false }: NavbarProps) {
               </SheetTrigger>
               <SheetContent side="right">
                 <div className="flex flex-col gap-4 pt-6">
-                  <Link href="/">
-                    <a className="text-lg font-medium hover:text-primary">Home</a>
-                  </Link>
-                  <Link href="/about">
-                    <a className="text-lg font-medium hover:text-primary">About</a>
-                  </Link>
-                  <Link href="/#how-it-works">
-                    <a className="text-lg font-medium hover:text-primary">How it Works</a>
-                  </Link>
-                  <Link href="/#contact">
-                    <a className="text-lg font-medium hover:text-primary">Contact</a>
-                  </Link>
+                  {!isDashboardRoute && (
+                    <>
+                      <Link href="/">
+                        <a className="text-lg font-medium hover:text-primary">Home</a>
+                      </Link>
+                      <Link href="/about">
+                        <a className="text-lg font-medium hover:text-primary">About</a>
+                      </Link>
+                      <Link href="/#how-it-works">
+                        <a className="text-lg font-medium hover:text-primary">How it Works</a>
+                      </Link>
+                      <Link href="/#contact">
+                        <a className="text-lg font-medium hover:text-primary">Contact</a>
+                      </Link>
+                    </>
+                  )}
+                  {isDashboardRoute && (
+                    <div className="space-y-3">
+                      {showDashboardSearch && (
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                          <Input placeholder="Search..." className="pl-9" />
+                        </div>
+                      )}
+                      <Button variant="outline" className="w-full justify-start">
+                        <Bell className="mr-2 h-4 w-4" />
+                        Notifications
+                      </Button>
+                    </div>
+                  )}
                   
                   <div className="h-px bg-gray-200 my-2"></div>
                   
                   {user ? (
                     <>
-                      <Link href={getDashboardLink()}>
-                        <Button className="w-full">Dashboard</Button>
-                      </Link>
+                      {!isDashboardRoute && (
+                        <Link href={getDashboardLink()}>
+                          <Button className="w-full">Dashboard</Button>
+                        </Link>
+                      )}
                       <Button variant="outline" className="w-full" onClick={handleLogout}>
                         <LogOut className="mr-2 h-4 w-4" />
                         Logout

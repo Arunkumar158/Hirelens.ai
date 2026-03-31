@@ -10,6 +10,14 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from '@/components/ui/breadcrumb';
 import { CheckCircle2, FileText, Lightbulb, PlusCircle, Sparkles, Upload, XCircle } from 'lucide-react';
 import ResumeList from './ResumeList';
 
@@ -158,12 +166,25 @@ export default function JobSeekerContent() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Job Seeker Dashboard</h1>
-      
-      <DashboardStats stats={stats} />
-      
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2">
+        <div className="lg:col-span-2 space-y-6">
+          <div className="space-y-2">
+            <Breadcrumb>
+              <BreadcrumbList>
+                <BreadcrumbItem>
+                  <BreadcrumbLink href="/">Home</BreadcrumbLink>
+                </BreadcrumbItem>
+                <BreadcrumbSeparator />
+                <BreadcrumbItem>
+                  <BreadcrumbPage>Dashboard</BreadcrumbPage>
+                </BreadcrumbItem>
+              </BreadcrumbList>
+            </Breadcrumb>
+            <h1 className="text-2xl font-bold">Job Seeker Dashboard</h1>
+          </div>
+
+          <DashboardStats stats={stats} />
+
           <Tabs value={activeTab} onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="analyze">Analyze Resume</TabsTrigger>
@@ -184,7 +205,6 @@ export default function JobSeekerContent() {
                   </div>
                 )}
                 <CardHeader>
-                  <CardTitle>Analyze Resume</CardTitle>
                   <CardDescription>Upload your PDF and paste a job description to start matching.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
@@ -228,7 +248,11 @@ export default function JobSeekerContent() {
                   </div>
 
                   <div className="flex justify-end">
-                    <Button onClick={startAnalysis} disabled={!hasValidInput || isAnalyzing} className="bg-blue-600 hover:bg-blue-700">
+                    <Button
+                      onClick={startAnalysis}
+                      disabled={!hasValidInput || isAnalyzing}
+                      className="bg-blue-600 font-semibold shadow-lg shadow-blue-600/25 hover:bg-blue-700 hover:shadow-blue-700/30"
+                    >
                       {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
                     </Button>
                   </div>
@@ -366,7 +390,21 @@ export default function JobSeekerContent() {
           
           <Card className="mt-6">
             <CardContent className="pt-6">
-              <h3 className="text-lg font-medium mb-4">Recent Analyses</h3>
+              <div className="mb-4 flex items-center justify-between gap-2">
+                <h3 className="text-lg font-medium">Recent Analyses</h3>
+                {Array.isArray(resumes) && resumes.length > 0 && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setActiveTab('analyze');
+                      window.setTimeout(() => fileInputRef.current?.click(), 0);
+                    }}
+                  >
+                    Quick Upload
+                  </Button>
+                )}
+              </div>
               <AnalysisHistory />
             </CardContent>
           </Card>

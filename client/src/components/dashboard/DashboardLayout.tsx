@@ -12,7 +12,6 @@ import {
   LogOut,
   Menu,
   X,
-  User,
 } from "lucide-react";
 import {
   Sheet,
@@ -21,8 +20,7 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { extractInitials } from "@/lib/utils";
+import { LucideIcon } from "lucide-react";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -55,28 +53,35 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     switch(user.role) {
       case "jobseeker":
         return [
-          { href: "/dashboard/jobseeker", label: "Dashboard", icon: <Home className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/jobseeker/resumes", label: "My Resumes", icon: <FileText className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/jobseeker/settings", label: "Settings", icon: <Settings className="mr-2 h-4 w-4" /> },
+          { href: "/dashboard/jobseeker", label: "Dashboard", icon: Home },
+          { href: "/dashboard/jobseeker/resumes", label: "My Resumes", icon: FileText },
+          { href: "/dashboard/jobseeker/settings", label: "Settings", icon: Settings },
         ];
       case "recruiter":
         return [
-          { href: "/dashboard/recruiter", label: "Dashboard", icon: <Home className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/recruiter/jobs", label: "My Jobs", icon: <FileText className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/recruiter/candidates", label: "Candidates", icon: <Users className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/recruiter/settings", label: "Settings", icon: <Settings className="mr-2 h-4 w-4" /> },
+          { href: "/dashboard/recruiter", label: "Dashboard", icon: Home },
+          { href: "/dashboard/recruiter/jobs", label: "My Jobs", icon: FileText },
+          { href: "/dashboard/recruiter/candidates", label: "Candidates", icon: Users },
+          { href: "/dashboard/recruiter/settings", label: "Settings", icon: Settings },
         ];
       case "admin":
         return [
-          { href: "/dashboard/admin", label: "Dashboard", icon: <Home className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/admin/users", label: "Users", icon: <Users className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/admin/analytics", label: "Analytics", icon: <BarChart className="mr-2 h-4 w-4" /> },
-          { href: "/dashboard/admin/settings", label: "Settings", icon: <Settings className="mr-2 h-4 w-4" /> },
+          { href: "/dashboard/admin", label: "Dashboard", icon: Home },
+          { href: "/dashboard/admin/users", label: "Users", icon: Users },
+          { href: "/dashboard/admin/analytics", label: "Analytics", icon: BarChart },
+          { href: "/dashboard/admin/settings", label: "Settings", icon: Settings },
         ];
       default:
         return [];
     }
   })();
+
+  const navButtonClass = (isActive: boolean) =>
+    `w-full justify-start rounded-lg border-l-4 px-3 py-2.5 transition-colors ${
+      isActive
+        ? "border-l-primary bg-primary/10 text-primary hover:bg-primary/15"
+        : "border-l-transparent text-gray-700 hover:bg-gray-100 hover:text-gray-900"
+    }`;
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -84,29 +89,15 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       
       <div className="flex">
         {/* Desktop Sidebar */}
-        <div className="hidden md:flex flex-col w-64 bg-white h-[calc(100vh-4rem)] border-r border-gray-200 overflow-y-auto">
-          <div className="p-4 border-b border-gray-200">
-            <div className="flex items-center space-x-3">
-              <Avatar>
-                <AvatarFallback className="bg-primary text-white">
-                  {extractInitials(user.name || user.username)}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-medium text-gray-900">{user.name || user.username}</p>
-                <p className="text-xs text-gray-500 capitalize">{user.role}</p>
-              </div>
-            </div>
-          </div>
-          
-          <div className="p-3 space-y-1">
-            {navItems.map((item) => (
+        <div className="hidden md:flex flex-col w-64 bg-white h-[calc(100vh-4rem)] border-r border-slate-200 overflow-y-auto">
+          <div className="p-3 space-y-1.5">
+            {navItems.map((item: { href: string; label: string; icon: LucideIcon }) => (
               <Link key={item.href} href={item.href}>
                 <Button 
-                  variant={location === item.href ? "secondary" : "ghost"} 
-                  className="w-full justify-start"
+                  variant="ghost"
+                  className={navButtonClass(location === item.href)}
                 >
-                  {item.icon}
+                  <item.icon className="mr-3 h-5 w-5 shrink-0" />
                   {item.label}
                 </Button>
               </Link>
@@ -122,14 +113,16 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         {/* Mobile Menu */}
         <div className="md:hidden fixed bottom-0 left-0 right-0 z-10 bg-white border-t border-gray-200 p-2">
           <div className="flex justify-around">
-            {navItems.slice(0, 3).map((item) => (
+            {navItems.slice(0, 3).map((item: { href: string; label: string; icon: LucideIcon }) => (
               <Link key={item.href} href={item.href}>
                 <Button 
-                  variant={location === item.href ? "secondary" : "ghost"} 
+                  variant="ghost" 
                   size="sm"
-                  className="flex flex-col h-16 px-2"
+                  className={`flex h-16 flex-col px-2 ${
+                    location === item.href ? "bg-primary/10 text-primary" : "text-gray-600"
+                  }`}
                 >
-                  {item.icon.props.children}
+                  <item.icon className="h-5 w-5" />
                   <span className="text-xs mt-1">{item.label}</span>
                 </Button>
               </Link>
@@ -144,18 +137,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               </SheetTrigger>
               <SheetContent side="bottom" className="h-72">
                 <div className="space-y-4 py-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-3">
-                      <Avatar>
-                        <AvatarFallback className="bg-primary text-white">
-                          {extractInitials(user.name || user.username)}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div>
-                        <p className="font-medium text-gray-900">{user.name || user.username}</p>
-                        <p className="text-sm text-gray-500 capitalize">{user.role}</p>
-                      </div>
-                    </div>
+                  <div className="flex items-center justify-end">
                     <SheetClose asChild>
                       <Button variant="ghost" size="icon">
                         <X className="h-4 w-4" />
@@ -164,14 +146,14 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   </div>
                   
                   <div className="space-y-1">
-                    {navItems.slice(3).map((item) => (
+                    {navItems.slice(3).map((item: { href: string; label: string; icon: LucideIcon }) => (
                       <Link key={item.href} href={item.href}>
                         <SheetClose asChild>
                           <Button 
-                            variant={location === item.href ? "secondary" : "ghost"} 
-                            className="w-full justify-start"
+                            variant="ghost" 
+                            className={navButtonClass(location === item.href)}
                           >
-                            {item.icon}
+                            <item.icon className="mr-3 h-5 w-5 shrink-0" />
                             {item.label}
                           </Button>
                         </SheetClose>

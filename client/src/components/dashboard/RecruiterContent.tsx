@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { type ChangeEvent, useMemo, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { Progress } from '@/components/ui/progress';
 import { 
   Table, 
   TableBody, 
@@ -27,16 +28,17 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { 
-  Dialog, 
-  DialogContent, 
+import { Skeleton } from '@/components/ui/skeleton';
+import { BarChart3, Briefcase, FileUp, Users } from 'lucide-react';
+import { formatDate } from '@/lib/utils';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger 
 } from '@/components/ui/dialog';
-import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, FileText, Users, Briefcase, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
-import { getScoreColor, formatDate } from '@/lib/utils';
 
 const jobSchema = z.object({
   title: z.string().min(1, "Job title is required"),
@@ -44,28 +46,28 @@ const jobSchema = z.object({
 });
 
 type JobFormValues = z.infer<typeof jobSchema>;
+type UploadCandidate = {
+  id: number;
+  name: string;
+  fileName: string;
+  appliedJobId: number;
+  status: 'Pending' | 'Analyzed';
+  matchScore: number;
+  missingSkills: string[];
+};
 
 export default function RecruiterContent() {
   const [activeTab, setActiveTab] = useState('jobs');
   const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const [selectedCandidates, setSelectedCandidates] = useState<number[]>([]);
-  const [dialogOpen, setDialogOpen] = useState(false);
+  const [uploadJobId, setUploadJobId] = useState<number | null>(null);
+  const [uploadedCandidates, setUploadedCandidates] = useState<UploadCandidate[]>([]);
+  const [isRanking, setIsRanking] = useState(false);
+  const [rankingProgress, setRankingProgress] = useState(0);
+  const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
 
   // Fetch recruiter's jobs
   const { data: jobs, isLoading: isLoadingJobs } = useQuery({
     queryKey: ['/api/jobs'],
-  });
-
-  // Fetch all resumes (in a real app, this would be paginated and filtered)
-  const { data: resumes, isLoading: isLoadingResumes } = useQuery({
-    queryKey: ['/api/resumes/all'],
-    enabled: false, // Disable auto-fetching for demo
-  });
-
-  // Fetch analyses for the selected job
-  const { data: analyses, isLoading: isLoadingAnalyses } = useQuery({
-    queryKey: ['/api/analyses/job', selectedJobId],
-    enabled: !!selectedJobId,
   });
 
   // Form for creating a new job
@@ -86,56 +88,135 @@ export default function RecruiterContent() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
       form.reset();
-    },
-  });
-
-  // Mutation for bulk analyzing resumes
-  const bulkAnalyzeMutation = useMutation({
-    mutationFn: async (data: { jobId: number, resumeIds: number[] }) => {
-      const res = await apiRequest('POST', '/api/recruiter/bulk-analyze', data);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/analyses/job', selectedJobId] });
-      setSelectedCandidates([]);
-      setDialogOpen(false);
+      setIsCreateJobOpen(false);
     },
   });
 
   const onSubmit = (data: JobFormValues) => {
     createJobMutation.mutate(data);
   };
+  
+  const allMissingSkills = ['System Design', 'AWS', 'Leadership', 'Kubernetes', 'Testing', 'GraphQL', 'CI/CD'];
+  const hasJobs = Array.isArray(jobs) && jobs.length > 0;
+  const activeJobs = (jobs || []).filter((job: any) => !job.isArchived);
 
-  const handleBulkAnalyze = () => {
-    if (!selectedJobId || selectedCandidates.length === 0) return;
-    
-    bulkAnalyzeMutation.mutate({
-      jobId: selectedJobId,
-      resumeIds: selectedCandidates
+  const candidatesForSelectedJob = useMemo(() => {
+    if (!selectedJobId) return uploadedCandidates;
+    return uploadedCandidates.filter((candidate) => candidate.appliedJobId === selectedJobId);
+  }, [selectedJobId, uploadedCandidates]);
+
+  const rankedCandidates = useMemo(
+    () => [...candidatesForSelectedJob].sort((a, b) => b.matchScore - a.matchScore),
+    [candidatesForSelectedJob]
+  );
+
+  const totalApplications = uploadedCandidates.length;
+  const analyzedCandidates = uploadedCandidates.filter((candidate) => candidate.status === 'Analyzed');
+  const averageMatch = analyzedCandidates.length
+    ? Math.round(analyzedCandidates.reduce((sum, candidate) => sum + candidate.matchScore, 0) / analyzedCandidates.length)
+    : 0;
+  const topMatchScore = analyzedCandidates.length
+    ? `${Math.max(...analyzedCandidates.map((candidate) => candidate.matchScore))}%`
+    : '0%';
+
+  const topSkillGaps = useMemo(() => {
+    const frequency: Record<string, number> = {};
+    uploadedCandidates.forEach((candidate) => {
+      candidate.missingSkills.forEach((skill) => {
+        frequency[skill] = (frequency[skill] || 0) + 1;
+      });
     });
-  };
+    return Object.entries(frequency)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4);
+  }, [uploadedCandidates]);
 
-  const toggleCandidateSelection = (resumeId: number) => {
-    setSelectedCandidates(prev => 
-      prev.includes(resumeId)
-        ? prev.filter(id => id !== resumeId)
-        : [...prev, resumeId]
-    );
-  };
+  const qualityByJob = useMemo(() => {
+    return (jobs || []).map((job: any) => {
+      const jobCandidates = uploadedCandidates.filter((candidate) => candidate.appliedJobId === job.id);
+      const quality = jobCandidates.length
+        ? Math.round(jobCandidates.reduce((sum, candidate) => sum + candidate.matchScore, 0) / jobCandidates.length)
+        : 0;
+      return {
+        jobId: job.id,
+        title: job.title,
+        candidates: jobCandidates.length,
+        quality,
+      };
+    }).sort((a, b) => b.quality - a.quality);
+  }, [jobs, uploadedCandidates]);
 
-  // Mock statistics for the recruiter dashboard
   const stats = [
-    { label: 'Active Jobs', value: jobs?.length || 0 },
-    { label: 'Candidates Analyzed', value: analyses?.length || 0 },
-    { label: 'Top Match Score', value: analyses?.length ? `${Math.max(...analyses.map((a: any) => a.score))}%` : '0%' }
+    { label: 'Active Jobs', value: activeJobs.length || 0 },
+    { label: 'Candidates Analyzed', value: analyzedCandidates.length },
+    { label: 'Top Match Score', value: topMatchScore }
   ];
 
-  // Mock data for candidates (in a real app, this would come from the backend)
-  const mockCandidates = [
-    { id: 1, name: 'John Doe', resumeId: 1, email: 'john@example.com', dateApplied: '2023-06-15' },
-    { id: 2, name: 'Jane Smith', resumeId: 2, email: 'jane@example.com', dateApplied: '2023-06-14' },
-    { id: 3, name: 'Alex Johnson', resumeId: 3, email: 'alex@example.com', dateApplied: '2023-06-12' },
-  ];
+  const sanitizeCandidateName = (fileName: string) => {
+    return fileName
+      .replace(/\.pdf$/i, '')
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  };
+
+  const handleCandidateUpload = (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files || []);
+    if (!uploadJobId || files.length === 0) return;
+    const baseId = Date.now();
+    const nextCandidates = files.map((file, index) => ({
+      id: baseId + index,
+      name: sanitizeCandidateName(file.name),
+      fileName: file.name,
+      appliedJobId: uploadJobId,
+      status: 'Pending' as const,
+      matchScore: 0,
+      missingSkills: [],
+    }));
+    setUploadedCandidates((prev) => [...nextCandidates, ...prev]);
+    event.target.value = '';
+  };
+
+  const runRanking = () => {
+    if (!selectedJobId) return;
+    setIsRanking(true);
+    setRankingProgress(0);
+    let step = 0;
+    const timer = window.setInterval(() => {
+      step += 1;
+      setRankingProgress(Math.min(step * 20, 100));
+      if (step >= 5) {
+        window.clearInterval(timer);
+        setUploadedCandidates((prev) =>
+          prev.map((candidate) => {
+            if (candidate.appliedJobId !== selectedJobId) return candidate;
+            const score = 58 + ((candidate.id * 13) % 38);
+            const missingSkills = allMissingSkills.filter((_, idx) => (candidate.id + idx) % 3 === 0).slice(0, 3);
+            return {
+              ...candidate,
+              status: 'Analyzed',
+              matchScore: score,
+              missingSkills,
+            };
+          })
+        );
+        setIsRanking(false);
+      }
+    }, 450);
+  };
+
+  const getJobTitle = (jobId: number) => jobs?.find((job: any) => job.id === jobId)?.title || 'Unknown job';
+
+  const getStatusBadge = (candidate: UploadCandidate) => {
+    if (candidate.status === 'Pending') {
+      return <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">Pending</Badge>;
+    }
+    if (candidate.matchScore >= 80) {
+      return <Badge variant="outline" className="text-green-700 border-green-300 bg-green-50">High Match</Badge>;
+    }
+    return <Badge variant="outline" className="text-amber-700 border-amber-300 bg-amber-50">Average</Badge>;
+  };
 
   return (
     <div className="space-y-6">
@@ -151,299 +232,332 @@ export default function RecruiterContent() {
         </TabsList>
         
         <TabsContent value="jobs" className="space-y-6 mt-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="md:col-span-1">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Create New Job</CardTitle>
-                  <CardDescription>Add a new job posting to analyze resumes against</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Form {...form}>
-                    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                      <FormField
-                        control={form.control}
-                        name="title"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Job Title</FormLabel>
-                            <FormControl>
-                              <Input placeholder="e.g. Senior Frontend Developer" {...field} />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <FormField
-                        control={form.control}
-                        name="description"
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Job Description</FormLabel>
-                            <FormControl>
-                              <Textarea 
-                                placeholder="Paste the full job description including required skills..."
-                                className="h-32 resize-none"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                      
-                      <Button 
-                        type="submit" 
-                        className="w-full"
-                        disabled={createJobMutation.isPending}
-                      >
-                        {createJobMutation.isPending ? 'Creating...' : 'Create Job'}
-                      </Button>
-                    </form>
-                  </Form>
-                </CardContent>
-              </Card>
-            </div>
-            
-            <div className="md:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle>My Job Listings</CardTitle>
-                  <CardDescription>View and manage your job postings</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {isLoadingJobs ? (
-                    <div className="space-y-4">
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                      <Skeleton className="h-12 w-full" />
-                    </div>
-                  ) : jobs?.length > 0 ? (
-                    <div className="rounded-md border">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>Job Title</TableHead>
-                            <TableHead>Created</TableHead>
-                            <TableHead>Candidates</TableHead>
-                            <TableHead>Actions</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {jobs.map((job: any) => (
-                            <TableRow key={job.id}>
-                              <TableCell className="font-medium">{job.title}</TableCell>
-                              <TableCell>{formatDate(job.createdAt)}</TableCell>
-                              <TableCell>
-                                <Badge variant="outline">
-                                  {analyses?.filter((a: any) => a.jobId === job.id).length || 0} analyzed
-                                </Badge>
-                              </TableCell>
-                              <TableCell>
-                                <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                                  <DialogTrigger asChild>
-                                    <Button 
-                                      variant="outline" 
-                                      size="sm"
-                                      onClick={() => setSelectedJobId(job.id)}
-                                    >
-                                      <Users className="h-4 w-4 mr-2" />
-                                      Analyze Resumes
-                                    </Button>
-                                  </DialogTrigger>
-                                  <DialogContent className="max-w-3xl">
-                                    <DialogHeader>
-                                      <DialogTitle>Analyze Resumes for {job.title}</DialogTitle>
-                                    </DialogHeader>
-                                    <div className="py-4">
-                                      <div className="flex justify-between mb-4">
-                                        <h3 className="text-sm font-medium">Select resumes to analyze</h3>
-                                        <Button
-                                          size="sm"
-                                          disabled={selectedCandidates.length === 0 || bulkAnalyzeMutation.isPending}
-                                          onClick={handleBulkAnalyze}
-                                        >
-                                          {bulkAnalyzeMutation.isPending ? 'Analyzing...' : 'Analyze Selected'}
-                                        </Button>
-                                      </div>
-                                      <div className="max-h-96 overflow-y-auto rounded-md border">
-                                        <Table>
-                                          <TableHeader>
-                                            <TableRow>
-                                              <TableHead className="w-12">
-                                                <input 
-                                                  type="checkbox" 
-                                                  className="h-4 w-4 rounded border-gray-300"
-                                                  checked={selectedCandidates.length === mockCandidates.length}
-                                                  onChange={() => {
-                                                    if (selectedCandidates.length === mockCandidates.length) {
-                                                      setSelectedCandidates([]);
-                                                    } else {
-                                                      setSelectedCandidates(mockCandidates.map(c => c.resumeId));
-                                                    }
-                                                  }}
-                                                />
-                                              </TableHead>
-                                              <TableHead>Name</TableHead>
-                                              <TableHead>Email</TableHead>
-                                              <TableHead>Date Applied</TableHead>
-                                            </TableRow>
-                                          </TableHeader>
-                                          <TableBody>
-                                            {mockCandidates.map((candidate) => (
-                                              <TableRow key={candidate.id}>
-                                                <TableCell>
-                                                  <input 
-                                                    type="checkbox" 
-                                                    className="h-4 w-4 rounded border-gray-300"
-                                                    checked={selectedCandidates.includes(candidate.resumeId)}
-                                                    onChange={() => toggleCandidateSelection(candidate.resumeId)}
-                                                  />
-                                                </TableCell>
-                                                <TableCell className="font-medium">{candidate.name}</TableCell>
-                                                <TableCell>{candidate.email}</TableCell>
-                                                <TableCell>{candidate.dateApplied}</TableCell>
-                                              </TableRow>
-                                            ))}
-                                          </TableBody>
-                                        </Table>
-                                      </div>
-                                    </div>
-                                  </DialogContent>
-                                </Dialog>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  ) : (
-                    <div className="text-center py-8">
-                      <Briefcase className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                      <p className="text-gray-500">No jobs created yet</p>
-                      <p className="text-sm text-gray-400">Create your first job to start analyzing resumes</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="candidates" className="mt-6">
           <Card>
-            <CardHeader>
-              <CardTitle className="flex justify-between items-center">
-                <span>Candidate Rankings</span>
-                <select 
-                  className="text-sm border rounded-md p-2"
-                  onChange={(e) => setSelectedJobId(Number(e.target.value) || null)}
-                  value={selectedJobId || ''}
-                >
-                  <option value="">Select a job</option>
-                  {jobs?.map((job: any) => (
-                    <option key={job.id} value={job.id}>{job.title}</option>
-                  ))}
-                </select>
-              </CardTitle>
-              <CardDescription>Candidates ranked by match score for selected job</CardDescription>
+            <CardHeader className="flex flex-row items-center justify-between gap-4">
+              <div>
+                <CardTitle>My Job Listings</CardTitle>
+                <CardDescription>View and manage your job postings</CardDescription>
+              </div>
+              <Button
+                onClick={() => setIsCreateJobOpen(true)}
+                className="bg-blue-600 hover:bg-blue-700"
+              >
+                + New Job
+              </Button>
             </CardHeader>
             <CardContent>
-              {!selectedJobId ? (
-                <div className="text-center py-8">
-                  <AlertCircle className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">No job selected</p>
-                  <p className="text-sm text-gray-400">Select a job to view candidate rankings</p>
-                </div>
-              ) : isLoadingAnalyses ? (
+              {isLoadingJobs ? (
                 <div className="space-y-4">
                   <Skeleton className="h-12 w-full" />
                   <Skeleton className="h-12 w-full" />
                   <Skeleton className="h-12 w-full" />
                 </div>
-              ) : analyses?.length > 0 ? (
+              ) : hasJobs ? (
                 <div className="rounded-md border">
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Rank</TableHead>
-                        <TableHead>Candidate</TableHead>
-                        <TableHead>Match Score</TableHead>
-                        <TableHead>Matched Skills</TableHead>
-                        <TableHead>Missing Skills</TableHead>
+                        <TableHead>Job Title</TableHead>
+                        <TableHead>Date</TableHead>
+                        <TableHead>Applicants</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {[...analyses]
-                        .sort((a: any, b: any) => b.score - a.score)
-                        .map((analysis: any, index: number) => (
-                          <TableRow key={analysis.id}>
-                            <TableCell className="font-medium">{index + 1}</TableCell>
-                            <TableCell>
-                              {mockCandidates.find(c => c.resumeId === analysis.resumeId)?.name || 'Unknown'}
-                            </TableCell>
-                            <TableCell>
-                              <span className={`font-medium ${getScoreColor(analysis.score)}`}>
-                                {analysis.score}%
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {Array.isArray(analysis.matchedSkills) && analysis.matchedSkills.slice(0, 3).map((skill: string, i: number) => (
-                                  <Badge key={i} variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                    {skill}
-                                  </Badge>
-                                ))}
-                                {Array.isArray(analysis.matchedSkills) && analysis.matchedSkills.length > 3 && (
-                                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                                    +{analysis.matchedSkills.length - 3} more
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                            <TableCell>
-                              <div className="flex flex-wrap gap-1">
-                                {Array.isArray(analysis.missingSkills) && analysis.missingSkills.slice(0, 3).map((skill: string, i: number) => (
-                                  <Badge key={i} variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                    {skill}
-                                  </Badge>
-                                ))}
-                                {Array.isArray(analysis.missingSkills) && analysis.missingSkills.length > 3 && (
-                                  <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                                    +{analysis.missingSkills.length - 3} more
-                                  </Badge>
-                                )}
-                              </div>
-                            </TableCell>
-                          </TableRow>
-                        ))}
+                      {jobs.map((job: any) => (
+                        <TableRow
+                          key={job.id}
+                          className="cursor-pointer hover:bg-blue-50/70 transition-colors"
+                          onClick={() => {
+                            setSelectedJobId(job.id);
+                            setActiveTab('candidates');
+                          }}
+                        >
+                          <TableCell className="font-medium">{job.title}</TableCell>
+                          <TableCell>{formatDate(job.createdAt)}</TableCell>
+                          <TableCell>
+                            <Badge variant="outline">
+                              {uploadedCandidates.filter((candidate) => candidate.appliedJobId === job.id).length} applicants
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
                     </TableBody>
                   </Table>
                 </div>
               ) : (
                 <div className="text-center py-8">
-                  <AlertCircle className="h-12 w-12 text-gray-300 mx-auto mb-3" />
-                  <p className="text-gray-500">No analyses for this job yet</p>
-                  <p className="text-sm text-gray-400">Use the "Analyze Resumes" button on the Jobs tab</p>
+                  <Briefcase className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                  <p className="text-gray-500">No jobs created yet</p>
+                  <p className="text-sm text-gray-400">Click + New Job to create your first listing</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Dialog open={isCreateJobOpen} onOpenChange={setIsCreateJobOpen}>
+            <DialogContent className="sm:max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Create New Job</DialogTitle>
+                <DialogDescription>Add a new job posting to analyze resumes against.</DialogDescription>
+              </DialogHeader>
+              <Form {...form}>
+                <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+                  <FormField
+                    control={form.control}
+                    name="title"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Job Title</FormLabel>
+                        <FormControl>
+                          <Input placeholder="e.g. Senior Frontend Developer" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="description"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Job Description</FormLabel>
+                        <FormControl>
+                          <Textarea
+                            placeholder="Paste the full job description including required skills..."
+                            className="h-32 resize-none"
+                            {...field}
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <DialogFooter>
+                    <Button type="button" variant="outline" onClick={() => setIsCreateJobOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button
+                      type="submit"
+                      className="bg-blue-600 hover:bg-blue-700"
+                      disabled={createJobMutation.isPending}
+                    >
+                      {createJobMutation.isPending ? 'Creating...' : 'Create Job'}
+                    </Button>
+                  </DialogFooter>
+                </form>
+              </Form>
+            </DialogContent>
+          </Dialog>
+        </TabsContent>
+        
+        <TabsContent value="candidates" className="space-y-6 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileUp className="h-5 w-5 text-blue-600" />
+                Bulk Upload
+              </CardTitle>
+              <CardDescription>Upload candidate resumes and assign them to an active job listing.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="md:col-span-1">
+                  <p className="text-sm font-medium mb-2">Active Job</p>
+                  <select
+                    className="w-full h-10 rounded-md border px-3 text-sm bg-white"
+                    value={uploadJobId || ''}
+                    onChange={(event) => {
+                      const jobId = Number(event.target.value) || null;
+                      setUploadJobId(jobId);
+                      if (!selectedJobId) {
+                        setSelectedJobId(jobId);
+                      }
+                    }}
+                  >
+                    <option value="">Select active job</option>
+                    {activeJobs.map((job: any) => (
+                      <option key={job.id} value={job.id}>{job.title}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium mb-2">Resume Files (PDF)</label>
+                  <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/50 p-6 text-center cursor-pointer hover:bg-blue-50 transition-colors">
+                    <FileUp className="h-8 w-8 text-blue-600 mb-2" />
+                    <span className="text-sm text-slate-700">Click to upload multiple PDF resumes</span>
+                    <span className="text-xs text-slate-500 mt-1">Candidate names are extracted from file names</span>
+                    <input
+                      type="file"
+                      accept="application/pdf"
+                      multiple
+                      className="hidden"
+                      disabled={!uploadJobId}
+                      onChange={handleCandidateUpload}
+                    />
+                  </label>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Users className="h-5 w-5 text-blue-600" />
+                  Candidate Management & Ranking
+                </span>
+                <div className="flex items-center gap-3">
+                  <select
+                    className="h-9 rounded-md border px-2 text-sm bg-white"
+                    value={selectedJobId || ''}
+                    onChange={(event) => setSelectedJobId(Number(event.target.value) || null)}
+                  >
+                    <option value="">All Jobs</option>
+                    {jobs?.map((job: any) => (
+                      <option key={job.id} value={job.id}>{job.title}</option>
+                    ))}
+                  </select>
+                  <Button
+                    onClick={runRanking}
+                    disabled={!selectedJobId || isRanking || rankedCandidates.length === 0}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    {isRanking ? 'Ranking...' : 'Rank Candidates'}
+                  </Button>
+                </div>
+              </CardTitle>
+              <CardDescription>Automatically sorted from highest to lowest match score for the selected job.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {isRanking && (
+                <div className="rounded-md border border-blue-100 bg-blue-50 p-4">
+                  <p className="text-sm text-blue-800 mb-2">Running AI candidate ranking...</p>
+                  <Progress value={rankingProgress} className="h-2" />
+                </div>
+              )}
+              {rankedCandidates.length === 0 ? (
+                <div className="text-center py-10 text-slate-500">
+                  Upload resumes to see candidates here.
+                </div>
+              ) : (
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Candidate Name</TableHead>
+                        <TableHead>Applied Job</TableHead>
+                        <TableHead>Match Score</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Actions</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {rankedCandidates.map((candidate) => (
+                        <TableRow key={candidate.id}>
+                          <TableCell className="font-medium">{candidate.name}</TableCell>
+                          <TableCell>{getJobTitle(candidate.appliedJobId)}</TableCell>
+                          <TableCell className="w-56">
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-xs text-slate-600">
+                                <span>{candidate.status === 'Analyzed' ? `${candidate.matchScore}%` : '--'}</span>
+                              </div>
+                              <Progress value={candidate.matchScore} className="h-2" />
+                            </div>
+                          </TableCell>
+                          <TableCell>{getStatusBadge(candidate)}</TableCell>
+                          <TableCell>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={candidate.status !== 'Analyzed'}
+                            >
+                              View Report
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
               )}
             </CardContent>
           </Card>
         </TabsContent>
         
-        <TabsContent value="analytics" className="mt-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Skills Analysis</CardTitle>
-              <CardDescription>Most common skills among analyzed resumes</CardDescription>
-            </CardHeader>
-            <CardContent className="h-80">
-              <div className="flex justify-center items-center h-full">
-                <p className="text-gray-500">Skills visualization would appear here</p>
-              </div>
+        <TabsContent value="analytics" className="space-y-6 mt-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-500">Total Applications</p>
+                <p className="text-2xl font-semibold mt-1">{totalApplications}</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-500">Average Match Score</p>
+                <p className="text-2xl font-semibold mt-1">{averageMatch}%</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-6">
+                <p className="text-sm text-slate-500">Analyzed Candidates</p>
+                <p className="text-2xl font-semibold mt-1">{analyzedCandidates.length}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-blue-600" />
+                  Top Skill Gaps
+                </CardTitle>
+                <CardDescription>Skills most frequently missing across uploaded candidates.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {topSkillGaps.length === 0 ? (
+                  <p className="text-sm text-slate-500">No skill gap data yet. Rank candidates to populate this view.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {topSkillGaps.map(([skill, count]) => (
+                      <div key={skill} className="flex items-center justify-between rounded-md border p-2">
+                        <span className="text-sm font-medium">{skill}</span>
+                        <Badge variant="outline">{count} candidates</Badge>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Candidate Quality by Job</CardTitle>
+                <CardDescription>Higher bars indicate stronger average candidate fit.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {qualityByJob.length === 0 ? (
+                    <p className="text-sm text-slate-500">Create jobs and upload candidates to view quality trends.</p>
+                  ) : qualityByJob.map((item) => (
+                    <div key={item.jobId} className="space-y-1">
+                      <div className="flex justify-between text-sm">
+                        <span className="truncate pr-3">{item.title}</span>
+                        <span className="text-slate-600">{item.quality}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-slate-100">
+                        <div className="h-2 rounded-full bg-blue-600" style={{ width: `${item.quality}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
             </CardContent>
-          </Card>
+            </Card>
+          </div>
         </TabsContent>
       </Tabs>
     </div>

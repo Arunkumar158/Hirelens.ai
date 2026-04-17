@@ -136,7 +136,6 @@ export default function JobSeekerSettings() {
                       setNotifications((prev) => ({ ...prev, productUpdates: !!checked }))
                     }
                   />
-                  />
                   <Label htmlFor="productUpdates">Product updates</Label>
                 </div>
               </div>
@@ -174,7 +173,6 @@ export default function JobSeekerSettings() {
             </div>
           </form>
         </Card>
-      </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import JobSeekerContent from "@/components/dashboard/JobSeekerContent";
+import ResumePage from "@/pages/dashboard/resume";
+import JobSeekerSettings from "@/pages/jobseeker-settings";
 import { useAuth } from "@/hooks/use-auth";
-import { Redirect } from "wouter";
+import { Redirect, Route, Switch } from "wouter";
 
 export default function JobseekerDashboard() {
   const { user } = useAuth();
@@ -21,7 +23,12 @@ export default function JobseekerDashboard() {
   
   return (
     <DashboardLayout>
-      <JobSeekerContent />
+      <Switch>
+        <Route path="/dashboard/jobseeker/resumes" component={ResumePage} />
+        <Route path="/dashboard/jobseeker/settings" component={JobSeekerSettings} />
+        <Route path="/dashboard/jobseeker" component={JobSeekerContent} />
+        <Route component={JobSeekerContent} />
+      </Switch>
     </DashboardLayout>
   );
 }

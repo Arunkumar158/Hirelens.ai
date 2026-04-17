@@ -12,6 +12,7 @@ import {
   LogOut,
   Menu,
   X,
+  type LucideIcon,
 } from "lucide-react";
 import {
   Sheet,
@@ -20,7 +21,6 @@ import {
   SheetClose,
 } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { LucideIcon } from "lucide-react";
 
 interface DashboardLayoutProps {
   children: ReactNode;
@@ -76,6 +76,20 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
     }
   })();
 
+  const navItemHrefs = navItems.map((item) => item.href);
+
+  const isNavHrefActive = (href: string) => {
+    const pathMatches = (loc: string, h: string) =>
+      loc === h || loc.startsWith(`${h}/`);
+    if (!pathMatches(location, href)) return false;
+    return !navItemHrefs.some(
+      (other) =>
+        other !== href &&
+        other.length > href.length &&
+        pathMatches(location, other)
+    );
+  };
+
   const navButtonClass = (isActive: boolean) =>
     `w-full justify-start rounded-lg border-l-4 px-3 py-2.5 transition-colors ${
       isActive
@@ -95,7 +109,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
               <Link key={item.href} href={item.href}>
                 <Button 
                   variant="ghost"
-                  className={navButtonClass(location === item.href)}
+                  className={navButtonClass(isNavHrefActive(item.href))}
                 >
                   <item.icon className="mr-3 h-5 w-5 shrink-0" />
                   {item.label}
@@ -119,7 +133,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                   variant="ghost" 
                   size="sm"
                   className={`flex h-16 flex-col px-2 ${
-                    location === item.href ? "bg-primary/10 text-primary" : "text-gray-600"
+                    isNavHrefActive(item.href) ? "bg-primary/10 text-primary" : "text-gray-600"
                   }`}
                 >
                   <item.icon className="h-5 w-5" />
@@ -151,7 +165,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
                         <SheetClose asChild>
                           <Button 
                             variant="ghost" 
-                            className={navButtonClass(location === item.href)}
+                            className={navButtonClass(isNavHrefActive(item.href))}
                           >
                             <item.icon className="mr-3 h-5 w-5 shrink-0" />
                             {item.label}

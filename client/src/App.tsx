@@ -4,6 +4,9 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing-page";
 import AuthPage from "@/pages/auth-page";
+import RegisterPage from "@/pages/register-page";
+import ForgotPasswordPage from "@/pages/forgot-password-page";
+import ResetPasswordPage from "@/pages/reset-password-page";
 import JobseekerDashboard from "@/pages/jobseeker-dashboard";
 import RecruiterDashboard from "@/pages/recruiter-dashboard";
 import AdminDashboard from "@/pages/admin-dashboard";
@@ -24,10 +27,14 @@ function App() {
             <Switch>
               <Route path="/" component={LandingPage} />
               <Route path="/auth" component={AuthPage} />
+              <Route path="/register" component={RegisterPage} />
+              <Route path="/forgot-password" component={ForgotPasswordPage} />
+              <Route path="/reset-password" component={ResetPasswordPage} />
               <Route path="/about" component={About} />
-              <ProtectedRoute path="/dashboard/jobseeker" role="jobseeker" component={JobseekerDashboard} />
-              <ProtectedRoute path="/dashboard/recruiter" role="recruiter" component={RecruiterDashboard} />
-              <ProtectedRoute path="/dashboard/admin" role="admin" component={AdminDashboard} />
+              {/* Optional wildcard so nested sidebar URLs keep the same dashboard shell */}
+              <ProtectedRoute path="/dashboard/jobseeker/*?" role="jobseeker" component={JobseekerDashboard} />
+              <ProtectedRoute path="/dashboard/recruiter/*?" role="recruiter" component={RecruiterDashboard} />
+              <ProtectedRoute path="/dashboard/admin/*?" role="admin" component={AdminDashboard} />
               <Route component={NotFound} />
             </Switch>
           </TooltipProvider>

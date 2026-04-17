@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -34,20 +35,6 @@ export default function RegisterPage() {
   const [, navigate] = useLocation();
   const { user, registerMutation } = useAuth();
 
-  if (user) {
-    const redirectPath =
-      user.role === "jobseeker"
-        ? "/dashboard/jobseeker"
-        : user.role === "recruiter"
-          ? "/dashboard/recruiter"
-          : user.role === "admin"
-            ? "/dashboard/admin"
-            : "/";
-
-    navigate(redirectPath);
-    return null;
-  }
-
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
     defaultValues: {
@@ -59,6 +46,23 @@ export default function RegisterPage() {
       role: "jobseeker",
     },
   });
+
+  useEffect(() => {
+    if (!user) return;
+    const redirectPath =
+      user.role === "jobseeker"
+        ? "/dashboard/jobseeker"
+        : user.role === "recruiter"
+          ? "/dashboard/recruiter"
+          : user.role === "admin"
+            ? "/dashboard/admin"
+            : "/";
+    navigate(redirectPath);
+  }, [user, navigate]);
+
+  if (user) {
+    return null;
+  }
 
   const onSubmit = async (values: RegisterFormValues) => {
     await registerMutation.mutateAsync(values);

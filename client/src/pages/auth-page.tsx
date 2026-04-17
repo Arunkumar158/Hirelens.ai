@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { z } from "zod";
 import { useAuth } from "@/hooks/use-auth";
@@ -26,17 +27,6 @@ export default function AuthPage() {
   const [, navigate] = useLocation();
   const { user, loginMutation } = useAuth();
 
-  // Redirect if already logged in
-  if (user) {
-    const redirectPath = 
-      user.role === 'jobseeker' ? '/dashboard/jobseeker' : 
-      user.role === 'recruiter' ? '/dashboard/recruiter' : 
-      user.role === 'admin' ? '/dashboard/admin' : '/';
-    
-    navigate(redirectPath);
-    return null;
-  }
-
   const loginForm = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
     defaultValues: {
@@ -44,6 +34,23 @@ export default function AuthPage() {
       password: "",
     },
   });
+
+  useEffect(() => {
+    if (!user) return;
+    const redirectPath =
+      user.role === "jobseeker"
+        ? "/dashboard/jobseeker"
+        : user.role === "recruiter"
+          ? "/dashboard/recruiter"
+          : user.role === "admin"
+            ? "/dashboard/admin"
+            : "/";
+    navigate(redirectPath);
+  }, [user, navigate]);
+
+  if (user) {
+    return null;
+  }
 
   const onLoginSubmit = async (values: LoginFormValues) => {
     try {

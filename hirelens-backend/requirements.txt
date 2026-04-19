@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic-settings
+supabase
+pdfplumber
+python-docx
+scikit-learn
+nltk
+python-jose[cryptography]
+sentry-sdk

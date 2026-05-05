@@ -5,7 +5,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: str
     SUPABASE_KEY: str
     SUPABASE_BUCKET: str = "resumes"
-    FRONTEND_URL: str = "http://localhost:3000"
+    FRONTEND_URL: str = "http://localhost:5000"
 
     model_config = SettingsConfigDict(
         env_file=".env",

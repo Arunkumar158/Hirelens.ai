@@ -1,9 +1,10 @@
-import { type ChangeEvent, useMemo, useState } from 'react';
+import { type ChangeEvent, useMemo, useRef, useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { apiRequest, queryClient } from '@/lib/queryClient';
+import { analyzeResumes, getScoreLabel, type Candidate } from '@/lib/api';
 import DashboardStats from './DashboardStats';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -29,7 +30,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { BarChart3, Briefcase, FileUp, Users } from 'lucide-react';
+import { BarChart3, Briefcase, FileUp, Loader2, Users } from 'lucide-react';
 import { formatDate } from '@/lib/utils';
 import {
   Dialog,
@@ -46,6 +47,14 @@ const jobSchema = z.object({
 });
 
 type JobFormValues = z.infer<typeof jobSchema>;
+
+type Job = {
+  id: number;
+  title: string;
+  description: string;
+  createdAt: string;
+  isArchived?: boolean;
+};
 type UploadCandidate = {
   id: number;
   name: string;
@@ -65,8 +74,17 @@ export default function RecruiterContent() {
   const [rankingProgress, setRankingProgress] = useState(0);
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
 
+  // ── API integration state ─────────────────────────────────────────────────
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [jobId, setJobId] = useState<string | null>(null);
+  const [apiCandidates, setApiCandidates] = useState<Candidate[]>([]);
+  const [analyzeJobDescription, setAnalyzeJobDescription] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const analyzeFileInputRef = useRef<HTMLInputElement>(null);
+
   // Fetch recruiter's jobs
-  const { data: jobs, isLoading: isLoadingJobs } = useQuery({
+  const { data: jobs, isLoading: isLoadingJobs } = useQuery<Job[]>({
     queryKey: ['/api/jobs'],
   });
 
@@ -127,12 +145,12 @@ export default function RecruiterContent() {
       });
     });
     return Object.entries(frequency)
-      .sort((a, b) => b[1] - a[1])
+      .sort((a: [string, number], b: [string, number]) => b[1] - a[1])
       .slice(0, 4);
   }, [uploadedCandidates]);
 
   const qualityByJob = useMemo(() => {
-    return (jobs || []).map((job: any) => {
+    return (jobs || []).map((job: Job) => {
       const jobCandidates = uploadedCandidates.filter((candidate) => candidate.appliedJobId === job.id);
       const quality = jobCandidates.length
         ? Math.round(jobCandidates.reduce((sum, candidate) => sum + candidate.matchScore, 0) / jobCandidates.length)
@@ -143,7 +161,7 @@ export default function RecruiterContent() {
         candidates: jobCandidates.length,
         quality,
       };
-    }).sort((a, b) => b.quality - a.quality);
+    }).sort((a: { jobId: number; title: string; candidates: number; quality: number }, b: { jobId: number; title: string; candidates: number; quality: number }) => b.quality - a.quality);
   }, [jobs, uploadedCandidates]);
 
   const stats = [
@@ -206,7 +224,35 @@ export default function RecruiterContent() {
     }, 450);
   };
 
-  const getJobTitle = (jobId: number) => jobs?.find((job: any) => job.id === jobId)?.title || 'Unknown job';
+  // ── Real API: analyze resumes ─────────────────────────────────────────────
+  const handleAnalyze = async () => {
+    if (selectedFiles.length === 0) {
+      setAnalysisError('Please upload at least one resume');
+      return;
+    }
+    if (!analyzeJobDescription.trim()) {
+      setAnalysisError('Please enter a job description');
+      return;
+    }
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+    try {
+      const response = await analyzeResumes(analyzeJobDescription, selectedFiles);
+      setApiCandidates(response.ranked_candidates);
+      setJobId(response.job_id);
+    } catch (err: any) {
+      setAnalysisError(err.message ?? 'Analysis failed. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const handleAnalyzeFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    setSelectedFiles(Array.from(e.target.files || []));
+    e.target.value = '';
+  };
+
+  const getJobTitle = (jobId: number) => jobs?.find((job) => job.id === jobId)?.title || 'Unknown job';
 
   const getStatusBadge = (candidate: UploadCandidate) => {
     if (candidate.status === 'Pending') {
@@ -353,6 +399,7 @@ export default function RecruiterContent() {
         </TabsContent>
         
         <TabsContent value="candidates" className="space-y-6 mt-6">
+          {/* ── Existing upload section (kept unchanged) ── */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -402,12 +449,13 @@ export default function RecruiterContent() {
             </CardContent>
           </Card>
 
+          {/* ── Existing candidate table (kept unchanged) ── */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span className="flex items-center gap-2">
                   <Users className="h-5 w-5 text-blue-600" />
-                  Candidate Management & Ranking
+                  Candidate Management &amp; Ranking
                 </span>
                 <div className="flex items-center gap-3">
                   <select
@@ -485,6 +533,194 @@ export default function RecruiterContent() {
               )}
             </CardContent>
           </Card>
+
+          {/* ── NEW: AI Resume Analysis (live backend) ── */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <BarChart3 className="h-5 w-5 text-blue-600" />
+                AI Resume Analysis
+              </CardTitle>
+              <CardDescription>
+                Upload resumes and paste a job description to get AI-powered match scores and keyword analysis.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Job description */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Job Description</label>
+                <textarea
+                  className="w-full min-h-[120px] rounded-md border border-slate-300 px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Paste the full job description including required skills and qualifications..."
+                  value={analyzeJobDescription}
+                  onChange={(e) => setAnalyzeJobDescription(e.target.value)}
+                  disabled={isAnalyzing}
+                />
+              </div>
+
+              {/* File upload */}
+              <div>
+                <label className="block text-sm font-medium mb-2">Resume Files (PDF / DOCX)</label>
+                <label className="flex flex-col items-center justify-center rounded-lg border-2 border-dashed border-blue-200 bg-blue-50/50 p-5 text-center cursor-pointer hover:bg-blue-50 transition-colors">
+                  <FileUp className="h-7 w-7 text-blue-600 mb-2" />
+                  <span className="text-sm text-slate-700">Click to select one or more resume files</span>
+                  <input
+                    ref={analyzeFileInputRef}
+                    type="file"
+                    accept="application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    multiple
+                    className="hidden"
+                    onChange={handleAnalyzeFileChange}
+                  />
+                </label>
+                {selectedFiles.length > 0 && (
+                  <div className="mt-2 space-y-1">
+                    {selectedFiles.map((f) => (
+                      <div key={f.name} className="flex items-center gap-2 rounded-md bg-blue-50 border border-blue-200 px-3 py-1.5">
+                        <FileUp className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                        <span className="text-xs text-slate-700 truncate">{f.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Error state */}
+              {analysisError && (
+                <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3">
+                  <p className="text-sm text-red-700">{analysisError}</p>
+                  <button
+                    className="mt-2 text-xs font-medium text-red-600 hover:underline"
+                    onClick={() => setAnalysisError(null)}
+                  >
+                    Try Again
+                  </button>
+                </div>
+              )}
+
+              {/* Submit */}
+              <div className="flex justify-end">
+                <Button
+                  onClick={handleAnalyze}
+                  disabled={isAnalyzing}
+                  className="bg-blue-600 hover:bg-blue-700"
+                >
+                  {isAnalyzing ? (
+                    <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Analyzing {selectedFiles.length} resume(s)...</>
+                  ) : 'Analyze Resumes'}
+                </Button>
+              </div>
+
+              {/* Results: ranked candidate cards */}
+              {apiCandidates.length > 0 && (
+                <div className="space-y-4 pt-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-slate-700">
+                      {apiCandidates.length} Candidate{apiCandidates.length !== 1 ? 's' : ''} Ranked
+                      {jobId && <span className="ml-2 text-xs font-normal text-slate-400">Job ID: {jobId}</span>}
+                    </h3>
+                  </div>
+
+                  {apiCandidates.map((candidate, index) => {
+                    const pct = Math.round(candidate.score * 100);
+                    const { label: scoreLabel, color: scoreColor } = getScoreLabel(candidate.score);
+                    const verdict =
+                      candidate.score >= 0.85 ? 'Strong fit — recommend for interview' :
+                      candidate.score >= 0.65 ? 'Good candidate — worth a closer look' :
+                      candidate.score >= 0.40 ? 'Partial match — consider for junior or adjacent roles' :
+                                                'Low match — does not meet core requirements';
+                    const total = candidate.matched_keywords.length + candidate.missing_keywords.length;
+                    const coveragePct = total > 0
+                      ? Math.round((candidate.matched_keywords.length / total) * 100)
+                      : 0;
+                    const bothEmpty = candidate.matched_keywords.length === 0 && candidate.missing_keywords.length === 0;
+
+                    const scoreColorClasses: Record<string, string> = {
+                      green: 'bg-green-50 border-green-300 text-green-700',
+                      blue: 'bg-blue-50 border-blue-300 text-blue-700',
+                      yellow: 'bg-yellow-50 border-yellow-300 text-yellow-700',
+                      red: 'bg-red-50 border-red-300 text-red-700',
+                    };
+
+                    return (
+                      <div key={candidate.resume_id} className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        {/* Card header */}
+                        <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-slate-100 bg-slate-50">
+                          <div className="flex items-center gap-3">
+                            <span className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-600 text-white text-xs font-bold shrink-0">
+                              #{index + 1}
+                            </span>
+                            <div>
+                              <p className="font-semibold text-sm text-slate-800">{candidate.filename}</p>
+                              <p className="text-xs text-slate-500">{verdict}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
+                            {candidate.score >= 0.65 && (
+                              <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                                ⭐ Shortlist Candidate
+                              </span>
+                            )}
+                            <div className="text-right">
+                              <p className="text-2xl font-bold text-slate-900">{pct}%</p>
+                              <span className={`text-xs font-medium border rounded-full px-2 py-0.5 ${scoreColorClasses[scoreColor]}`}>
+                                {scoreLabel}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Keywords */}
+                        <div className="px-4 py-3">
+                          {bothEmpty ? (
+                            <p className="text-xs text-slate-500 italic">
+                              Keyword analysis unavailable — try a more detailed job description
+                            </p>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* Matched */}
+                              <div>
+                                <p className="text-xs font-semibold text-green-700 mb-2">✅ Skills Matched</p>
+                                {candidate.matched_keywords.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {candidate.matched_keywords.map((kw) => (
+                                      <span key={kw} className="text-xs px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700">{kw}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-slate-400">No matching skills found</p>
+                                )}
+                              </div>
+                              {/* Missing */}
+                              <div>
+                                <p className="text-xs font-semibold text-red-700 mb-2">❌ Skills Missing</p>
+                                {candidate.missing_keywords.length > 0 ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {candidate.missing_keywords.map((kw) => (
+                                      <span key={kw} className="text-xs px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-700">{kw}</span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-slate-400">All key skills present</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Coverage insight */}
+                          {!bothEmpty && (
+                            <p className="mt-3 text-xs text-slate-500">
+                              Covers <span className="font-semibold text-slate-700">{coveragePct}%</span> of required skills
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
         </TabsContent>
         
         <TabsContent value="analytics" className="space-y-6 mt-6">
@@ -543,7 +779,7 @@ export default function RecruiterContent() {
                 <div className="space-y-3">
                   {qualityByJob.length === 0 ? (
                     <p className="text-sm text-slate-500">Create jobs and upload candidates to view quality trends.</p>
-                  ) : qualityByJob.map((item) => (
+                  ) : qualityByJob.map((item: { jobId: number; title: string; candidates: number; quality: number }) => (
                     <div key={item.jobId} className="space-y-1">
                       <div className="flex justify-between text-sm">
                         <span className="truncate pr-3">{item.title}</span>

@@ -18,8 +18,9 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from '@/components/ui/breadcrumb';
-import { CheckCircle2, FileText, Lightbulb, PlusCircle, Sparkles, Upload, XCircle } from 'lucide-react';
+import { CheckCircle2, FileText, Lightbulb, Loader2, PlusCircle, Sparkles, Upload, XCircle } from 'lucide-react';
 import ResumeList from './ResumeList';
+import { analyzeResumes, getScoreLabel, getResumes, type Candidate } from '@/lib/api';
 
 type AnalysisOutput = {
   score: number;
@@ -27,6 +28,13 @@ type AnalysisOutput = {
   missingKeywords: string[];
   suggestions: string[];
 };
+
+interface Resume {
+  id: number;
+  filename: string;
+  uploadedAt: string | Date;
+  content?: string;
+}
 
 const commonResumeKeywords = [
   'javascript', 'typescript', 'react', 'next.js', 'node.js', 'python', 'sql',
@@ -46,6 +54,10 @@ export default function JobSeekerContent() {
   const [analysisResult, setAnalysisResult] = useState<AnalysisOutput | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // ── API integration state ─────────────────────────────────────────────────
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [apiResult, setApiResult] = useState<Candidate | null>(null);
+
   const analysisSteps = [
     'Extracting keywords...',
     'Matching skills...',
@@ -54,8 +66,9 @@ export default function JobSeekerContent() {
   ];
 
   // Fetch user's resumes
-  const { data: resumes, isLoading: isLoadingResumes } = useQuery({
-    queryKey: ['/api/resumes'],
+  const { data: resumes, isLoading: isLoadingResumes } = useQuery<Resume[]>({
+    queryKey: ['/api/v1/resumes'],
+    queryFn: getResumes,
     enabled: !!user
   });
 
@@ -124,6 +137,43 @@ export default function JobSeekerContent() {
         setActiveTab('results');
       }
     }, 700);
+  };
+
+  // ── Real API handler ──────────────────────────────────────────────────────
+  const handleAnalyze = async () => {
+    if (!selectedFile) {
+      setAnalysisError('Please upload your resume');
+      return;
+    }
+    if (!jobDescription.trim()) {
+      setAnalysisError('Please paste the job description you are applying for');
+      return;
+    }
+    setIsAnalyzing(true);
+    setAnalysisError(null);
+    setApiResult(null);
+    try {
+      const response = await analyzeResumes(jobDescription, [selectedFile]);
+      setApiResult(response.ranked_candidates[0] ?? null);
+      setActiveTab('results');
+    } catch (err: any) {
+      setAnalysisError(err.message ?? 'Analysis failed. Please try again.');
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
+  const getKeywordTip = (keyword: string): string => {
+    const kw = keyword.toLowerCase();
+    if (kw.includes('docker'))
+      return "Add Docker to your skills section. Consider completing Docker's official getting-started guide.";
+    if (kw.includes('python'))
+      return 'Highlight Python projects in your experience section with measurable outcomes.';
+    if (kw.includes('sql') || kw.includes('postgresql'))
+      return 'Add a SQL project or certification (e.g. Mode Analytics SQL Tutorial) to your portfolio.';
+    if (kw.includes('aws') || kw.includes('cloud'))
+      return 'List any cloud exposure, even personal projects. AWS Free Tier is a good starting point.';
+    return `Add '${keyword}' to your Skills section if you have experience, or plan to learn it via a short course.`;
   };
 
   const downloadReport = () => {
@@ -247,20 +297,188 @@ export default function JobSeekerContent() {
                     </div>
                   </div>
 
-                  <div className="flex justify-end">
+                  <div className="flex justify-end gap-3">
+                    {/* Legacy mock analysis (kept) */}
                     <Button
+                      variant="outline"
                       onClick={startAnalysis}
                       disabled={!hasValidInput || isAnalyzing}
+                    >
+                      {isAnalyzing ? 'Analyzing...' : 'Quick Preview'}
+                    </Button>
+                    {/* Live API analysis */}
+                    <Button
+                      onClick={handleAnalyze}
+                      disabled={isAnalyzing}
                       className="bg-blue-600 font-semibold shadow-lg shadow-blue-600/25 hover:bg-blue-700 hover:shadow-blue-700/30"
                     >
-                      {isAnalyzing ? 'Analyzing...' : 'Start Analysis'}
+                      {isAnalyzing ? (
+                        <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Checking your resume against this role...</>
+                      ) : 'Analyze with AI'}
                     </Button>
                   </div>
+                  {/* Error state */}
+                  {analysisError && (
+                    <div className="rounded-md border border-red-200 bg-red-50 px-4 py-3 mt-2">
+                      <p className="text-sm text-red-700">{analysisError}</p>
+                      <button
+                        className="mt-1 text-xs font-medium text-red-600 hover:underline"
+                        onClick={() => { setAnalysisError(null); setApiResult(null); }}
+                      >
+                        Try Again
+                      </button>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             </TabsContent>
             
-            <TabsContent value="results" className="mt-6">
+            <TabsContent value="results" className="mt-6 space-y-4">
+              {/* ── Live API results card ── */}
+              {apiResult ? (() => {
+                const pct = Math.round(apiResult.score * 100);
+                const { label: scoreLabel, color: scoreColor } = getScoreLabel(apiResult.score);
+                const motivational =
+                  apiResult.score >= 0.85 ? 'Excellent! You are a strong fit for this role.' :
+                  apiResult.score >= 0.65 ? 'Good match! You meet most of the requirements.' :
+                  apiResult.score >= 0.40 ? 'You are partway there — a few gaps to address.' :
+                                            'Significant gaps found — use the tips below to improve.';
+                const bothEmpty = apiResult.matched_keywords.length === 0 && apiResult.missing_keywords.length === 0;
+                const scoreColorClasses: Record<string, string> = {
+                  green: 'bg-green-50 border-green-300 text-green-700',
+                  blue:  'bg-blue-50 border-blue-300 text-blue-700',
+                  yellow:'bg-yellow-50 border-yellow-300 text-yellow-700',
+                  red:   'bg-red-50 border-red-300 text-red-700',
+                };
+
+                const actionPlan: string[] = [];
+                if (apiResult.missing_keywords.length > 0)
+                  actionPlan.push(`1. Add these skills to your resume Skills section: ${apiResult.missing_keywords.slice(0,3).join(', ')}`);
+                actionPlan.push(`${actionPlan.length + 1}. Mirror the exact language from the job description in your resume — ATS systems match keywords precisely.`);
+                if (apiResult.score < 0.65)
+                  actionPlan.push(`${actionPlan.length + 1}. Consider a short online course or project to close the skill gaps highlighted above.`);
+                actionPlan.push(`${actionPlan.length + 1}. Quantify your experience — replace vague descriptions with measurable achievements (e.g. 'Reduced load time by 40%').`);
+
+                return (
+                  <div className="space-y-4">
+                    {/* Score section */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle>Your Match Score</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="flex flex-col md:flex-row items-center gap-6">
+                          <div
+                            className="relative h-36 w-36 rounded-full grid place-items-center shrink-0"
+                            style={{ background: `conic-gradient(#2563eb ${pct * 3.6}deg, #e2e8f0 0deg)` }}
+                          >
+                            <div className="h-28 w-28 rounded-full bg-white grid place-items-center">
+                              <div className="text-center">
+                                <p className="text-2xl font-bold text-blue-700">{pct}%</p>
+                                <p className="text-xs text-slate-500">Match</p>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex-1">
+                            <span className={`text-xs font-medium border rounded-full px-3 py-1 ${scoreColorClasses[scoreColor]}`}>
+                              {scoreLabel}
+                            </span>
+                            <p className="mt-3 text-sm font-medium text-slate-800">{motivational}</p>
+                            <Progress value={pct} className="h-2 mt-3" />
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+
+                    {/* Strengths */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">✅ What You Bring to the Table</CardTitle>
+                        <CardDescription>These skills align with what the employer is looking for</CardDescription>
+                      </CardHeader>
+                      <CardContent>
+                        {bothEmpty ? (
+                          <p className="text-sm text-slate-500 italic">
+                            No direct keyword matches found — try reformatting your resume to mirror the job description language
+                          </p>
+                        ) : apiResult.matched_keywords.length > 0 ? (
+                          <div className="flex flex-wrap gap-2">
+                            {apiResult.matched_keywords.map((kw) => (
+                              <span key={kw} className="text-xs px-2.5 py-1 rounded-full bg-green-50 border border-green-200 text-green-700 font-medium">{kw}</span>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-sm text-slate-500 italic">
+                            No direct keyword matches found — try reformatting your resume to mirror the job description language
+                          </p>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Gaps */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">🎯 Skills to Add or Highlight</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        {apiResult.missing_keywords.length === 0 ? (
+                          <p className="text-sm text-green-700 font-medium">No critical gaps detected — great job!</p>
+                        ) : (
+                          <div className="space-y-3">
+                            {apiResult.missing_keywords.map((kw) => (
+                              <div key={kw} className="rounded-md border border-red-100 bg-red-50 p-3">
+                                <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-white border border-red-200 text-red-700">{kw}</span>
+                                <p className="mt-2 text-xs text-slate-600">{getKeywordTip(kw)}</p>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </CardContent>
+                    </Card>
+
+                    {/* Action plan */}
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-base">📋 Your Next Steps</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <ul className="space-y-2">
+                          {actionPlan.map((step) => (
+                            <li key={step} className="text-sm text-slate-700 flex gap-2">
+                              <span className="text-blue-600 font-semibold shrink-0">→</span>
+                              {step}
+                            </li>
+                          ))}
+                        </ul>
+                      </CardContent>
+                    </Card>
+
+                    {/* Apply encouragement */}
+                    {apiResult.score >= 0.65 ? (
+                      <div className="rounded-lg border border-green-300 bg-green-50 p-4 text-center">
+                        <p className="text-sm font-semibold text-green-800">
+                          You meet the core requirements. Don't wait — apply now and let your matched skills speak for themselves.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 text-center">
+                        <p className="text-sm text-slate-600">
+                          Close the gaps above and recheck your score before applying. Even a few additions can significantly improve your match.
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end">
+                      <Button variant="outline" onClick={() => { setApiResult(null); setActiveTab('analyze'); }}>
+                        Start Over
+                      </Button>
+                    </div>
+                  </div>
+                );
+              })() : null}
+
+              {/* ── Legacy mock results (shown if no API result) ── */}
+              {!apiResult && (
               <Card>
                 <CardHeader>
                   <CardTitle>Analysis Results</CardTitle>
@@ -348,6 +566,7 @@ export default function JobSeekerContent() {
                   )}
                 </CardContent>
               </Card>
+              )}
             </TabsContent>
           </Tabs>
         </div>

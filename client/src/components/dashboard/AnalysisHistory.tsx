@@ -4,31 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
 import { formatDate, getScoreColor } from '@/lib/utils';
 import { BookOpenCheck, AlertCircle } from 'lucide-react';
-
-// Mock data - in a real application, this would come from the API
-const mockAnalyses = [
-  { 
-    id: 1, 
-    resumeId: 1,
-    jobDescription: "Frontend Developer with React experience",
-    score: 85, 
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000) 
-  },
-  { 
-    id: 2, 
-    resumeId: 1,
-    jobDescription: "Full Stack Developer with Node.js and React",
-    score: 75, 
-    timestamp: new Date(Date.now() - 5 * 24 * 60 * 60 * 1000) 
-  },
-  { 
-    id: 3, 
-    resumeId: 2,
-    jobDescription: "Senior JavaScript Developer",
-    score: 62, 
-    timestamp: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) 
-  }
-];
+import { getHistory } from '@/lib/api';
 
 interface AnalysisHistoryProps {
   resumeId?: number;
@@ -39,13 +15,12 @@ export default function AnalysisHistory({
   resumeId,
   onSelectAnalysis
 }: AnalysisHistoryProps) {
-  // We would normally fetch analyses from the API
-  // For now, we'll use mock data and simulate loading
-  const { data: analyses, isLoading } = useQuery({
-    queryKey: ['/api/analyses', resumeId],
-    enabled: false, // Disabled to simulate with mock data for now
-    initialData: mockAnalyses.filter(a => !resumeId || a.resumeId === resumeId),
+  const { data: allAnalyses, isLoading } = useQuery({
+    queryKey: ['/api/v1/history'],
+    queryFn: getHistory,
   });
+
+  const analyses = allAnalyses?.filter(a => !resumeId || a.resumeId === resumeId);
 
   if (isLoading) {
     return (

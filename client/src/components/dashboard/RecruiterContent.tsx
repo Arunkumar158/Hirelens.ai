@@ -1,10 +1,10 @@
-import { type ChangeEvent, useMemo, useRef, useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { type ChangeEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { apiRequest, queryClient } from '@/lib/queryClient';
+import { supabase, type SupabaseJob } from '@/lib/supabase';
 import { analyzeResumes, getScoreLabel, type Candidate } from '@/lib/api';
+import { useToast } from '@/hooks/use-toast';
 import DashboardStats from './DashboardStats';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -48,33 +48,36 @@ const jobSchema = z.object({
 
 type JobFormValues = z.infer<typeof jobSchema>;
 
-type Job = {
-  id: number;
-  title: string;
-  description: string;
-  createdAt: string;
-  isArchived?: boolean;
-};
+type Job = SupabaseJob;
+
 type UploadCandidate = {
   id: number;
   name: string;
   fileName: string;
-  appliedJobId: number;
+  appliedJobId: string;
   status: 'Pending' | 'Analyzed';
   matchScore: number;
   missingSkills: string[];
 };
 
+const RECRUITER_ID = '00000000-0000-0000-0000-000000000001';
+
 export default function RecruiterContent() {
+  const { toast } = useToast();
   const [activeTab, setActiveTab] = useState('jobs');
-  const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
-  const [uploadJobId, setUploadJobId] = useState<number | null>(null);
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJob, setSelectedJob] = useState<Job | null>(null);
+  const [uploadJobId, setUploadJobId] = useState<string | null>(null);
   const [uploadedCandidates, setUploadedCandidates] = useState<UploadCandidate[]>([]);
   const [isRanking, setIsRanking] = useState(false);
-  const [rankingProgress, setRankingProgress] = useState(0);
+  const [rankResults, setRankResults] = useState<Candidate[]>([]);
+  const [rankJobId, setRankJobId] = useState<string | null>(null);
   const [isCreateJobOpen, setIsCreateJobOpen] = useState(false);
+  const [jobs, setJobs] = useState<Job[]>([]);
+  const [isLoadingJobs, setIsLoadingJobs] = useState(false);
+  const [isSavingJob, setIsSavingJob] = useState(false);
 
-  // ── API integration state ─────────────────────────────────────────────────
+  // ── API integration state (manual Analyze Resumes section) ────────────────
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
@@ -83,44 +86,51 @@ export default function RecruiterContent() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const analyzeFileInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch recruiter's jobs
-  const { data: jobs, isLoading: isLoadingJobs } = useQuery<Job[]>({
-    queryKey: ['/api/jobs'],
-  });
+  // ── Fetch jobs from Supabase ──────────────────────────────────────────────
+  const fetchJobs = async () => {
+    setIsLoadingJobs(true);
+    const { data, error } = await supabase
+      .from('jobs')
+      .select('*')
+      .eq('recruiter_id', RECRUITER_ID)
+      .order('created_at', { ascending: false });
+    if (!error && data) setJobs(data);
+    setIsLoadingJobs(false);
+  };
 
-  // Form for creating a new job
+  useEffect(() => { fetchJobs(); }, []);
+
   const form = useForm<JobFormValues>({
     resolver: zodResolver(jobSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-    },
+    defaultValues: { title: '', description: '' },
   });
 
-  // Mutation for creating a new job
-  const createJobMutation = useMutation({
-    mutationFn: async (data: JobFormValues) => {
-      const res = await apiRequest('POST', '/api/jobs', data);
-      return await res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/jobs'] });
+  const onSubmit = async (data: JobFormValues) => {
+    setIsSavingJob(true);
+    const { error } = await supabase.from('jobs').insert({
+      recruiter_id: RECRUITER_ID,
+      title: data.title,
+      description: data.description,
+      status: 'active',
+    });
+    setIsSavingJob(false);
+    if (error) {
+      toast({ title: 'Failed to create job', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Job created!', description: `"${data.title}" is now active.` });
       form.reset();
       setIsCreateJobOpen(false);
-    },
-  });
-
-  const onSubmit = (data: JobFormValues) => {
-    createJobMutation.mutate(data);
+      fetchJobs();
+    }
   };
   
   const allMissingSkills = ['System Design', 'AWS', 'Leadership', 'Kubernetes', 'Testing', 'GraphQL', 'CI/CD'];
   const hasJobs = Array.isArray(jobs) && jobs.length > 0;
-  const activeJobs = (jobs || []).filter((job: any) => !job.isArchived);
+  const activeJobs = (jobs || []).filter((job: Job) => job.status === 'active');
 
   const candidatesForSelectedJob = useMemo(() => {
     if (!selectedJobId) return uploadedCandidates;
-    return uploadedCandidates.filter((candidate) => candidate.appliedJobId === selectedJobId);
+    return uploadedCandidates.filter((c) => c.appliedJobId === selectedJobId);
   }, [selectedJobId, uploadedCandidates]);
 
   const rankedCandidates = useMemo(
@@ -151,23 +161,22 @@ export default function RecruiterContent() {
 
   const qualityByJob = useMemo(() => {
     return (jobs || []).map((job: Job) => {
-      const jobCandidates = uploadedCandidates.filter((candidate) => candidate.appliedJobId === job.id);
+      const jobCandidates = uploadedCandidates.filter((c) => c.appliedJobId === job.id);
       const quality = jobCandidates.length
-        ? Math.round(jobCandidates.reduce((sum, candidate) => sum + candidate.matchScore, 0) / jobCandidates.length)
+        ? Math.round(jobCandidates.reduce((sum, c) => sum + c.matchScore, 0) / jobCandidates.length)
         : 0;
-      return {
-        jobId: job.id,
-        title: job.title,
-        candidates: jobCandidates.length,
-        quality,
-      };
-    }).sort((a: { jobId: number; title: string; candidates: number; quality: number }, b: { jobId: number; title: string; candidates: number; quality: number }) => b.quality - a.quality);
+      return { jobId: job.id, title: job.title, candidates: jobCandidates.length, quality };
+    }).sort((a, b) => b.quality - a.quality);
   }, [jobs, uploadedCandidates]);
+
+  const topRankScore = rankResults.length
+    ? `${Math.round(Math.max(...rankResults.map((c) => c.score)) * 100)}%`
+    : topMatchScore;
 
   const stats = [
     { label: 'Active Jobs', value: activeJobs.length || 0 },
-    { label: 'Candidates Analyzed', value: analyzedCandidates.length },
-    { label: 'Top Match Score', value: topMatchScore }
+    { label: 'Candidates Analyzed', value: analyzedCandidates.length + rankResults.length },
+    { label: 'Top Match Score', value: topRankScore },
   ];
 
   const sanitizeCandidateName = (fileName: string) => {
@@ -179,49 +188,117 @@ export default function RecruiterContent() {
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
-  const handleCandidateUpload = (event: ChangeEvent<HTMLInputElement>) => {
+  const handleCandidateUpload = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files || []);
-    if (!uploadJobId || files.length === 0) return;
-    const baseId = Date.now();
-    const nextCandidates = files.map((file, index) => ({
-      id: baseId + index,
-      name: sanitizeCandidateName(file.name),
-      fileName: file.name,
-      appliedJobId: uploadJobId,
-      status: 'Pending' as const,
-      matchScore: 0,
-      missingSkills: [],
-    }));
-    setUploadedCandidates((prev) => [...nextCandidates, ...prev]);
+    if (!uploadJobId || !selectedJob || files.length === 0) {
+      toast({ title: 'Select a job first', variant: 'destructive' });
+      return;
+    }
     event.target.value = '';
+    let saved = 0;
+    let firstStorageError: string | null = null;
+    for (const file of files) {
+      const path = `${selectedJob.id}/${file.name}`;
+      const { error: storageErr } = await supabase.storage
+        .from('resumes')
+        .upload(path, file, { upsert: true });
+      if (storageErr) {
+        firstStorageError = storageErr.message;
+        continue;
+      }
+      const { error: dbErr } = await supabase.from('resumes').insert({
+        job_id_local: selectedJob.id,
+        filename: file.name,
+        storage_path: path,
+        uploaded_at: new Date().toISOString(),
+      });
+      if (dbErr) {
+        firstStorageError = dbErr.message;
+        continue;
+      }
+      saved++;
+      const uid = Date.now() + saved;
+      setUploadedCandidates((prev) => [
+        {
+          id: uid,
+          name: sanitizeCandidateName(file.name),
+          fileName: file.name,
+          appliedJobId: selectedJob.id,
+          status: 'Pending' as const,
+          matchScore: 0,
+          missingSkills: [],
+        },
+        ...prev,
+      ]);
+    }
+    if (saved > 0) {
+      toast({
+        title: `${saved} resume(s) uploaded`,
+        description: `Saved for "${selectedJob.title}".`,
+      });
+    }
+    if (firstStorageError) {
+      toast({
+        title: `Upload error`,
+        description: firstStorageError,
+        variant: 'destructive',
+      });
+    }
+
   };
 
-  const runRanking = () => {
-    if (!selectedJobId) return;
+  const runRanking = async () => {
+    if (!selectedJobId || !selectedJob) {
+      toast({ title: 'Please select a job first', variant: 'destructive' });
+      return;
+    }
+    // Fetch resume records from Supabase
+    const { data: records, error: recErr } = await supabase
+      .from('resumes')
+      .select('*')
+      .eq('job_id_local', selectedJob.id);
+    if (recErr || !records?.length) {
+      toast({
+        title: 'No resumes found',
+        description: 'Upload resumes for this job first.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setIsRanking(true);
-    setRankingProgress(0);
-    let step = 0;
-    const timer = window.setInterval(() => {
-      step += 1;
-      setRankingProgress(Math.min(step * 20, 100));
-      if (step >= 5) {
-        window.clearInterval(timer);
-        setUploadedCandidates((prev) =>
-          prev.map((candidate) => {
-            if (candidate.appliedJobId !== selectedJobId) return candidate;
-            const score = 58 + ((candidate.id * 13) % 38);
-            const missingSkills = allMissingSkills.filter((_, idx) => (candidate.id + idx) % 3 === 0).slice(0, 3);
-            return {
-              ...candidate,
-              status: 'Analyzed',
-              matchScore: score,
-              missingSkills,
-            };
-          })
-        );
-        setIsRanking(false);
+    setRankResults([]);
+    // Download each file from Supabase Storage
+    const fileObjects: File[] = [];
+    for (const rec of records) {
+      const { data: blob } = await supabase.storage
+        .from('resumes')
+        .download(rec.storage_path);
+      if (blob) {
+        fileObjects.push(new File([blob], rec.filename, { type: 'application/pdf' }));
       }
-    }, 450);
+    }
+    if (fileObjects.length === 0) {
+      toast({ title: 'Could not download resumes', variant: 'destructive' });
+      setIsRanking(false);
+      return;
+    }
+    try {
+      const response = await analyzeResumes(selectedJob.description, fileObjects);
+      setRankResults(response.ranked_candidates);
+      setRankJobId(response.job_id);
+      toast({
+        title: 'Ranking complete!',
+        description: `${response.ranked_candidates.length} candidates ranked.`,
+      });
+    } catch (err: any) {
+      toast({
+        title: 'Ranking failed',
+        description: err.message ?? 'Backend error. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsRanking(false);
+    }
   };
 
   // ── Real API: analyze resumes ─────────────────────────────────────────────
@@ -252,7 +329,7 @@ export default function RecruiterContent() {
     e.target.value = '';
   };
 
-  const getJobTitle = (jobId: number) => jobs?.find((job) => job.id === jobId)?.title || 'Unknown job';
+  const getJobTitle = (appliedJobId: string) => jobs?.find((j) => j.id === appliedJobId)?.title || 'Unknown job';
 
   const getStatusBadge = (candidate: UploadCandidate) => {
     if (candidate.status === 'Pending') {
@@ -319,7 +396,7 @@ export default function RecruiterContent() {
                           }}
                         >
                           <TableCell className="font-medium">{job.title}</TableCell>
-                          <TableCell>{formatDate(job.createdAt)}</TableCell>
+                          <TableCell>{formatDate(job.created_at)}</TableCell>
                           <TableCell>
                             <Badge variant="outline">
                               {uploadedCandidates.filter((candidate) => candidate.appliedJobId === job.id).length} applicants
@@ -387,9 +464,9 @@ export default function RecruiterContent() {
                     <Button
                       type="submit"
                       className="bg-blue-600 hover:bg-blue-700"
-                      disabled={createJobMutation.isPending}
+                      disabled={isSavingJob}
                     >
-                      {createJobMutation.isPending ? 'Creating...' : 'Create Job'}
+                      {isSavingJob ? 'Creating...' : 'Create Job'}
                     </Button>
                   </DialogFooter>
                 </form>
@@ -416,15 +493,15 @@ export default function RecruiterContent() {
                     className="w-full h-10 rounded-md border px-3 text-sm bg-white"
                     value={uploadJobId || ''}
                     onChange={(event) => {
-                      const jobId = Number(event.target.value) || null;
-                      setUploadJobId(jobId);
-                      if (!selectedJobId) {
-                        setSelectedJobId(jobId);
-                      }
+                      const id = event.target.value || null;
+                      setUploadJobId(id);
+                      const job = activeJobs.find((j) => j.id === id) || null;
+                      setSelectedJob(job);
+                      if (!selectedJobId && id) setSelectedJobId(id);
                     }}
                   >
                     <option value="">Select active job</option>
-                    {activeJobs.map((job: any) => (
+                    {activeJobs.map((job) => (
                       <option key={job.id} value={job.id}>{job.title}</option>
                     ))}
                   </select>
@@ -461,19 +538,26 @@ export default function RecruiterContent() {
                   <select
                     className="h-9 rounded-md border px-2 text-sm bg-white"
                     value={selectedJobId || ''}
-                    onChange={(event) => setSelectedJobId(Number(event.target.value) || null)}
+                    onChange={(event) => {
+                      const id = event.target.value || null;
+                      setSelectedJobId(id);
+                      const job = jobs.find((j) => j.id === id) || null;
+                      setSelectedJob(job);
+                    }}
                   >
                     <option value="">All Jobs</option>
-                    {jobs?.map((job: any) => (
+                    {jobs?.map((job) => (
                       <option key={job.id} value={job.id}>{job.title}</option>
                     ))}
                   </select>
                   <Button
                     onClick={runRanking}
-                    disabled={!selectedJobId || isRanking || rankedCandidates.length === 0}
+                    disabled={!selectedJobId || isRanking}
                     className="bg-blue-600 hover:bg-blue-700"
                   >
-                    {isRanking ? 'Ranking...' : 'Rank Candidates'}
+                    {isRanking
+                      ? <><span className="animate-spin mr-2">⟳</span>Ranking...</>
+                      : 'Rank Candidates'}
                   </Button>
                 </div>
               </CardTitle>
@@ -482,8 +566,7 @@ export default function RecruiterContent() {
             <CardContent className="space-y-4">
               {isRanking && (
                 <div className="rounded-md border border-blue-100 bg-blue-50 p-4">
-                  <p className="text-sm text-blue-800 mb-2">Running AI candidate ranking...</p>
-                  <Progress value={rankingProgress} className="h-2" />
+                  <p className="text-sm text-blue-800 animate-pulse">Downloading resumes and running AI ranking...</p>
                 </div>
               )}
               {rankedCandidates.length === 0 ? (
@@ -534,7 +617,108 @@ export default function RecruiterContent() {
             </CardContent>
           </Card>
 
-          {/* ── NEW: AI Resume Analysis (live backend) ── */}
+          {/* ── Ranked Results from "Rank Candidates" ── */}
+          {rankResults.length > 0 && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <BarChart3 className="h-5 w-5 text-blue-600" />
+                  Ranked Results
+                  {rankJobId && (
+                    <span className="ml-2 text-xs font-normal text-slate-400">Job ID: {rankJobId}</span>
+                  )}
+                </CardTitle>
+                <CardDescription>
+                  {rankResults.length} candidate{rankResults.length !== 1 ? 's' : ''} ranked by AI match score for the selected job.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {rankResults.map((candidate, index) => {
+                  const pct = Math.round(candidate.score * 100);
+                  const { label: scoreLabel, color: scoreColor } = getScoreLabel(candidate.score);
+                  const verdict =
+                    candidate.score >= 0.85 ? 'Strong fit — recommend for interview' :
+                    candidate.score >= 0.65 ? 'Good candidate — worth a closer look' :
+                    candidate.score >= 0.40 ? 'Partial match — consider for adjacent roles' :
+                                              'Low match — does not meet core requirements';
+                  const total = candidate.matched_keywords.length + candidate.missing_keywords.length;
+                  const coveragePct = total > 0
+                    ? Math.round((candidate.matched_keywords.length / total) * 100)
+                    : 0;
+                  const bothEmpty = candidate.matched_keywords.length === 0 && candidate.missing_keywords.length === 0;
+                  const scoreColorClasses: Record<string, string> = {
+                    green: 'bg-green-50 border-green-300 text-green-700',
+                    blue: 'bg-blue-50 border-blue-300 text-blue-700',
+                    yellow: 'bg-yellow-50 border-yellow-300 text-yellow-700',
+                    red: 'bg-red-50 border-red-300 text-red-700',
+                  };
+                  return (
+                    <div key={candidate.resume_id} className="rounded-lg border border-slate-200 bg-white shadow-sm overflow-hidden">
+                      <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-slate-100 bg-slate-50">
+                        <div className="flex items-center gap-3">
+                          <span className="flex items-center justify-center h-8 w-8 rounded-full bg-blue-600 text-white text-xs font-bold shrink-0">
+                            #{index + 1}
+                          </span>
+                          <div>
+                            <p className="font-semibold text-sm text-slate-800">{candidate.filename}</p>
+                            <p className="text-xs text-slate-500">{verdict}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {candidate.score >= 0.65 && (
+                            <span className="text-xs font-medium text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                              ⭐ Shortlist
+                            </span>
+                          )}
+                          <div className="text-right">
+                            <p className="text-2xl font-bold text-slate-900">{pct}%</p>
+                            <span className={`text-xs font-medium border rounded-full px-2 py-0.5 ${scoreColorClasses[scoreColor]}`}>
+                              {scoreLabel}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="px-4 py-3">
+                        {bothEmpty ? (
+                          <p className="text-xs text-slate-500 italic">Keyword analysis unavailable — try a more detailed job description</p>
+                        ) : (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <p className="text-xs font-semibold text-green-700 mb-2">✅ Skills Matched</p>
+                              {candidate.matched_keywords.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {candidate.matched_keywords.map((kw) => (
+                                    <span key={kw} className="text-xs px-2 py-0.5 rounded-full bg-green-50 border border-green-200 text-green-700">{kw}</span>
+                                  ))}
+                                </div>
+                              ) : <p className="text-xs text-slate-400">No matching skills found</p>}
+                            </div>
+                            <div>
+                              <p className="text-xs font-semibold text-red-700 mb-2">❌ Skills Missing</p>
+                              {candidate.missing_keywords.length > 0 ? (
+                                <div className="flex flex-wrap gap-1.5">
+                                  {candidate.missing_keywords.map((kw) => (
+                                    <span key={kw} className="text-xs px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-red-700">{kw}</span>
+                                  ))}
+                                </div>
+                              ) : <p className="text-xs text-slate-400">All key skills present</p>}
+                            </div>
+                          </div>
+                        )}
+                        {!bothEmpty && (
+                          <p className="mt-3 text-xs text-slate-500">
+                            Covers <span className="font-semibold text-slate-700">{coveragePct}%</span> of required skills
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ── Manual: AI Resume Analysis (live backend) ── */}
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">

@@ -60,7 +60,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
       case "recruiter":
         return [
           { href: "/dashboard/recruiter", label: "Dashboard", icon: Home },
-          { href: "/dashboard/recruiter/jobs", label: "My Jobs", icon: FileText },
+          { href: "/dashboard/recruiter/my-jobs", label: "My Jobs", icon: FileText },
           { href: "/dashboard/recruiter/candidates", label: "Candidates", icon: Users },
           { href: "/dashboard/recruiter/settings", label: "Settings", icon: Settings },
         ];

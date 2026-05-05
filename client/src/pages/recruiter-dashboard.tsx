@@ -1,5 +1,6 @@
 import DashboardLayout from "@/components/dashboard/DashboardLayout";
 import RecruiterContent from "@/components/dashboard/RecruiterContent";
+import MyJobsPage from "@/pages/my-jobs";
 import { useAuth } from "@/hooks/use-auth";
 import { Redirect, Route, Switch } from "wouter";
 
@@ -31,6 +32,7 @@ export default function RecruiterDashboard() {
   return (
     <DashboardLayout>
       <Switch>
+        <Route path="/dashboard/recruiter/my-jobs" component={MyJobsPage} />
         <Route path="/dashboard/recruiter/jobs">
           <RecruiterSectionPlaceholder title="My Jobs" />
         </Route>
